@@ -1,8 +1,11 @@
 name: Build
 
 on:
+  # Only the default branch on push. Work on a branch is covered by the
+  # pull_request trigger, so building both would run every commit on an open
+  # pull request twice.
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
