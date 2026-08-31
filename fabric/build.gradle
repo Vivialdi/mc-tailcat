@@ -1,0 +1,31 @@
+dependencies {
+    // Loader only. Deliberately no `minecraft` and no `fabric-api` dependency:
+    // the entrypoint interfaces and FabricLoader are loader-level API that has
+    // been stable across every modern Minecraft release.
+    compileOnly "net.fabricmc:fabric-loader:${project.property('fabric_loader_version')}"
+
+    implementation project(':core')
+}
+
+processResources {
+    inputs.property 'version', project.version
+    inputs.property 'mod_id', project.property('mod_id')
+    inputs.property 'mod_name', project.property('mod_name')
+    inputs.property 'loader_version', project.property('fabric_loader_version')
+
+    filesMatching('fabric.mod.json') {
+        expand(
+            version: project.version,
+            mod_id: project.property('mod_id'),
+            mod_name: project.property('mod_name'),
+            loader_version: project.property('fabric_loader_version')
+        )
+    }
+}
+
+// Fold :core straight into the mod jar rather than shipping a nested jar, so
+// the artifact is a single self-contained file with no load-order concerns.
+jar {
+    archiveBaseName = project.property('mod_id')
+    from project(':core').sourceSets.main.output
+}

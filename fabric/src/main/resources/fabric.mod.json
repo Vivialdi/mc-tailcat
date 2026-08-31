@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${version}",
+  "name": "${mod_name}",
+  "description": "Puts a Minecraft server and its players on the same tailcat tunnel. The server publishes its address on startup; clients read it and add the server to their multiplayer list automatically. No port forwarding, no accounts, no Minecraft-version-specific code.",
+  "authors": [
+    "vivialdi"
+  ],
+  "contact": {
+    "homepage": "https://github.com/vivialdi/mc-tailcat",
+    "sources": "https://github.com/vivialdi/mc-tailcat",
+    "issues": "https://github.com/vivialdi/mc-tailcat/issues"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "server": [
+      "dev.vivialdi.mctailcat.fabric.TailcatServerEntrypoint"
+    ],
+    "client": [
+      "dev.vivialdi.mctailcat.fabric.TailcatClientEntrypoint"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.14.0",
+    "java": ">=17"
+  }
+}

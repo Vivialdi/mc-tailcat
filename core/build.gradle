@@ -1,0 +1,7 @@
+// Pure Java. No Minecraft, no Fabric, no third-party runtime dependencies --
+// everything here is JDK-only so it can be unit tested without a game.
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
