@@ -1,0 +1,33 @@
+plugins {
+    id 'java'
+}
+
+subprojects {
+    apply plugin: 'java'
+
+    group = project.property('maven_group')
+    version = project.property('mod_version')
+
+    repositories {
+        mavenCentral()
+        maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+    }
+
+    java {
+        withSourcesJar()
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        // Java 17 covers Minecraft 1.17 through current. `release` rather than a
+        // pinned toolchain, so the project builds on any JDK 17 or newer without
+        // needing that exact version installed. The mod holds no Minecraft
+        // references, so this is its only compatibility floor.
+        options.release = 17
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+        testLogging { events 'passed', 'skipped', 'failed' }
+    }
+}
