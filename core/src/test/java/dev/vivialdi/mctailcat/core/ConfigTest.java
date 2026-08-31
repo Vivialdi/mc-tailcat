@@ -28,6 +28,8 @@ class ConfigTest {
         assertTrue(config.enabled);
         assertEquals("minecraft", config.keyName);
         assertEquals(0, config.port);
+        // On by default: without it the published address moves between restarts.
+        assertTrue(config.fixedRegion);
     }
 
     @Test
@@ -38,6 +40,7 @@ class ConfigTest {
         config.keyName = "smp";
         config.port = 25570;
         config.fullAddress = true;
+        config.fixedRegion = false;
         config.downloadTailcat = false;
         config.save(file);
 
@@ -46,6 +49,7 @@ class ConfigTest {
         assertEquals("smp", reloaded.keyName);
         assertEquals(25570, reloaded.port);
         assertTrue(reloaded.fullAddress);
+        assertFalse(reloaded.fixedRegion);
         assertFalse(reloaded.downloadTailcat);
     }
 

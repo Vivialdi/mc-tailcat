@@ -67,7 +67,8 @@ public final class TailcatServerRuntime {
             Path stateDir = config.isolateState ? installDir.resolve("state") : null;
             Path executable = TailcatBinary.resolve(installDir, config.tailcatPath, config.downloadTailcat);
 
-            service = new TailcatService(executable, stateDir, config.keyName, port, config.fullAddress);
+            service = new TailcatService(executable, stateDir, installDir.resolve("address.txt"),
+                    config.keyName, port, config.fullAddress, config.fixedRegion, config.tailcatArgs);
             // Publish from the callback so a late address -- a slow first run,
             // or a restart much later on -- is still written out.
             service.setAddressListener(address -> publish(address, port, properties));

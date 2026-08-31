@@ -124,7 +124,8 @@ public final class TailcatClientRuntime {
             }
 
             TcpForwarder forwarder =
-                    new TcpForwarder(executable, stateDir, entry.address, entry.port, localPort);
+                    new TcpForwarder(executable, stateDir, entry.address, entry.port, localPort,
+                            config.tailcatArgs);
             try {
                 forwarder.start();
                 forwarders.add(forwarder);

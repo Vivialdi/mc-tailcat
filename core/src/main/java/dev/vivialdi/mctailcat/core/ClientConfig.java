@@ -60,6 +60,9 @@ public final class ClientConfig {
 
     public boolean isolateState = true;
 
+    /** Extra flags passed to every tailcat invocation, before positional arguments. */
+    public List<String> tailcatArgs = new ArrayList<>();
+
     /** Add or refresh an entry in the multiplayer server list for each server. */
     public boolean addToServerList = true;
 
@@ -90,6 +93,12 @@ public final class ClientConfig {
                 config.tailcatPath = Json.string(map, "tailcatPath", config.tailcatPath);
                 config.downloadTailcat = Json.bool(map, "downloadTailcat", config.downloadTailcat);
                 config.isolateState = Json.bool(map, "isolateState", config.isolateState);
+                config.tailcatArgs = new ArrayList<>();
+                for (Object item : Json.array(map, "tailcatArgs")) {
+                    if (item instanceof String && !((String) item).isBlank()) {
+                        config.tailcatArgs.add(((String) item).trim());
+                    }
+                }
                 config.addToServerList = Json.bool(map, "addToServerList", config.addToServerList);
                 config.serverListSuffix = Json.string(map, "serverListSuffix", config.serverListSuffix);
 
@@ -140,6 +149,7 @@ public final class ClientConfig {
         map.put("tailcatPath", tailcatPath);
         map.put("downloadTailcat", downloadTailcat);
         map.put("isolateState", isolateState);
+        map.put("tailcatArgs", new ArrayList<Object>(tailcatArgs));
         map.put("addToServerList", addToServerList);
         map.put("serverListSuffix", serverListSuffix);
         map.put("importFrom", new ArrayList<Object>(importFrom));

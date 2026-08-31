@@ -4,8 +4,10 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -27,9 +29,12 @@ public final class TailcatService implements AutoCloseable {
 
     private final Path executable;
     private final Path stateDir;
+    private final Path addressFile;
     private final String keyName;
     private final int port;
     private final boolean fullAddress;
+    private final boolean fixedRegion;
+    private final List<String> extraArgs;
 
     private final AtomicReference<String> address = new AtomicReference<>();
     private final CountDownLatch addressReady = new CountDownLatch(1);
@@ -39,12 +44,16 @@ public final class TailcatService implements AutoCloseable {
     private volatile Consumer<String> addressListener;
     private Thread supervisor;
 
-    public TailcatService(Path executable, Path stateDir, String keyName, int port, boolean fullAddress) {
+    public TailcatService(Path executable, Path stateDir, Path addressFile, String keyName, int port,
+            boolean fullAddress, boolean fixedRegion, List<String> extraArgs) {
         this.executable = executable;
         this.stateDir = stateDir;
+        this.addressFile = addressFile;
         this.keyName = keyName;
         this.port = port;
         this.fullAddress = fullAddress;
+        this.fixedRegion = fixedRegion;
+        this.extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);
     }
 
     /**
@@ -68,15 +77,21 @@ public final class TailcatService implements AutoCloseable {
     private void ensureSavedKey() {
         try {
             ProcessRunner.Result listed = ProcessRunner.run(stateDir,
-                    ProcessRunner.command(executable, "genkey", "--list"), 20);
+                    ProcessRunner.command(executable, extraArgs, "genkey", "--list"), 20);
             if (listed.succeeded() && listed.output.contains(keyName)) {
                 Log.info("Reusing the saved tailcat key '" + keyName + "'");
                 return;
             }
 
             Log.info("Creating a saved tailcat key named '" + keyName + "'");
+            // --fixed-region is what actually makes the published address
+            // stable. The address blob encodes the DERP relay region, and
+            // without a fixed one tailcat re-picks the region by latency at
+            // every startup, changing the address and stranding players who
+            // already saved it. A saved key alone is not enough.
             ProcessRunner.Result created = ProcessRunner.run(stateDir,
-                    ProcessRunner.command(executable, "genkey", "--key=" + keyName), 60);
+                    ProcessRunner.command(executable, extraArgs, "genkey", "--key=" + keyName,
+                            fixedRegion ? "--fixed-region" : null), 60);
             if (!created.succeeded()) {
                 Log.warn("`tailcat genkey` exited with " + created.exitCode
                         + "; the server will fall back to an ephemeral address that changes on"
@@ -144,21 +159,36 @@ public final class TailcatService implements AutoCloseable {
     }
 
     private int runOnce() throws IOException {
-        List<String> command = ProcessRunner.command(executable,
+        List<String> command = ProcessRunner.command(executable, extraArgs,
                 "serve",
                 "--key=" + keyName,
                 fullAddress ? "--full-address" : null,
                 String.valueOf(port));
         Log.info("Starting: " + String.join(" ", command));
 
-        Process started = ProcessRunner.start(stateDir, command);
+        // tailcat writes the bare address blob to TAILCAT_ADDR_FILE. That is a
+        // documented interface, unlike the human-readable banner, so it is the
+        // primary way the address is picked up; scanning the output stays as a
+        // fallback in case the variable ever stops being honoured.
+        Map<String, String> environment = Map.of();
+        if (addressFile != null) {
+            deleteStaleAddressFile();
+            environment = Map.of("TAILCAT_ADDR_FILE", addressFile.toAbsolutePath().toString());
+        }
+
+        Process started = ProcessRunner.start(stateDir, command, environment);
         process = started;
+        Thread addressWatcher = watchAddressFile(started);
 
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(started.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 consume(line);
+            }
+        } finally {
+            if (addressWatcher != null) {
+                addressWatcher.interrupt();
             }
         }
 
@@ -179,9 +209,60 @@ public final class TailcatService implements AutoCloseable {
         Log.info("[tailcat] " + trimmed);
 
         String found = NetworkDescriptor.findAddress(trimmed);
-        if (found == null) {
-            return;
+        if (found != null) {
+            acceptAddress(found);
         }
+    }
+
+    /** Clears an address left by a previous run so a stale one is never read back. */
+    private void deleteStaleAddressFile() {
+        try {
+            Files.deleteIfExists(addressFile);
+        } catch (IOException e) {
+            Log.warn("Could not clear " + addressFile + ": " + e.getMessage());
+        }
+    }
+
+    /**
+     * Polls for the address file tailcat writes on startup.
+     *
+     * <p>Polling rather than watching: the file appears once, within a second
+     * or two of launch, and a directory watch service would be far more
+     * machinery for the same answer.
+     */
+    private Thread watchAddressFile(Process forProcess) {
+        if (addressFile == null) {
+            return null;
+        }
+        Thread watcher = new Thread(() -> {
+            long deadline = System.currentTimeMillis()
+                    + TimeUnit.SECONDS.toMillis(ADDRESS_TIMEOUT_SECONDS);
+            while (System.currentTimeMillis() < deadline && forProcess.isAlive()) {
+                try {
+                    if (Files.isRegularFile(addressFile)) {
+                        String found = NetworkDescriptor.findAddress(
+                                Files.readString(addressFile, StandardCharsets.UTF_8));
+                        if (found != null) {
+                            acceptAddress(found);
+                            return;
+                        }
+                    }
+                    Thread.sleep(250);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } catch (IOException e) {
+                    // A partially written file just means try again.
+                }
+            }
+        }, "tailcat-address-watch");
+        watcher.setDaemon(true);
+        watcher.start();
+        return watcher;
+    }
+
+    /** Records a newly reported address and notifies the listener, exactly once per change. */
+    private synchronized void acceptAddress(String found) {
         String previous = address.getAndSet(found);
         if (previous == null) {
             Log.info("Tailcat address for this server: " + found);
@@ -189,8 +270,8 @@ public final class TailcatService implements AutoCloseable {
         } else if (previous.equals(found)) {
             return;
         } else {
-            // Only happens if the saved key could not be used; players holding
-            // the old address will need the new one.
+            // With a fixed-region key this should not happen; if it does, the
+            // key was regenerated or predates the fixed-region default.
             Log.warn("The Tailcat address changed from " + previous + " to " + found
                     + ". Players will need the new address.");
         }

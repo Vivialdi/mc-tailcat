@@ -105,9 +105,22 @@ public final class ProcessRunner {
 
     /** Starts a long-running process with merged output, for the caller to supervise. */
     public static Process start(Path stateDir, List<String> command) throws IOException {
+        return start(stateDir, command, Map.of());
+    }
+
+    /**
+     * Starts a long-running process with merged output and extra environment
+     * variables.
+     *
+     * <p>Merged because tailcat prints its startup banner -- the address blob
+     * included -- to stderr, not stdout.
+     */
+    public static Process start(Path stateDir, List<String> command, Map<String, String> extraEnv)
+            throws IOException {
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectErrorStream(true);
         applyStateDir(builder, stateDir);
+        builder.environment().putAll(extraEnv);
         return builder.start();
     }
 
@@ -125,13 +138,56 @@ public final class ProcessRunner {
     }
 
     public static List<String> command(Path executable, String... arguments) {
+        return command(executable, List.of(), arguments);
+    }
+
+    /**
+     * Builds a command line, splicing {@code extraFlags} in after the
+     * subcommand but before any positional arguments.
+     *
+     * <p>tailcat requires flags to precede its port and service arguments, so
+     * appending them would silently change their meaning.
+     */
+    public static List<String> command(Path executable, List<String> extraFlags,
+            String... arguments) {
         List<String> command = new ArrayList<>();
         command.add(executable.toAbsolutePath().toString());
+
+        List<String> parts = new ArrayList<>();
         for (String argument : arguments) {
             if (argument != null && !argument.isBlank()) {
-                command.add(argument);
+                parts.add(argument);
             }
         }
+
+        // A leading subcommand ("serve", "genkey") has to stay first; a bare
+        // client invocation takes its address as the first positional instead.
+        int insertAt = !parts.isEmpty() && isSubcommand(parts.get(0)) ? 1 : 0;
+        command.addAll(parts.subList(0, insertAt));
+        for (String flag : extraFlags) {
+            if (flag != null && !flag.isBlank()) {
+                command.add(flag.trim());
+            }
+        }
+        command.addAll(parts.subList(insertAt, parts.size()));
         return command;
+    }
+
+    private static boolean isSubcommand(String argument) {
+        switch (argument) {
+            case "serve":
+            case "genkey":
+            case "ping":
+            case "parse":
+            case "resolve":
+            case "socks":
+            case "ssh":
+            case "cp":
+            case "ls":
+            case "recv":
+                return true;
+            default:
+                return false;
+        }
     }
 }

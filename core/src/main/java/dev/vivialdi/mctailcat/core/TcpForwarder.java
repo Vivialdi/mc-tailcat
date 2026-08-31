@@ -32,6 +32,7 @@ public final class TcpForwarder implements AutoCloseable {
     private final String address;
     private final int remotePort;
     private final int localPort;
+    private final List<String> extraArgs;
 
     private final ExecutorService connections = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "tailcat-forwarder");
@@ -45,6 +46,12 @@ public final class TcpForwarder implements AutoCloseable {
     private volatile boolean running;
 
     public TcpForwarder(Path executable, Path stateDir, String address, int remotePort, int localPort) {
+        this(executable, stateDir, address, remotePort, localPort, List.of());
+    }
+
+    public TcpForwarder(Path executable, Path stateDir, String address, int remotePort, int localPort,
+            List<String> extraArgs) {
+        this.extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);
         this.executable = executable;
         this.stateDir = stateDir;
         this.address = address;
@@ -89,7 +96,8 @@ public final class TcpForwarder implements AutoCloseable {
             client.setTcpNoDelay(true);
             client.setKeepAlive(true);
 
-            List<String> command = ProcessRunner.command(executable, address, String.valueOf(remotePort));
+            List<String> command =
+                    ProcessRunner.command(executable, extraArgs, address, String.valueOf(remotePort));
             tunnel = ProcessRunner.startPiped(stateDir, command);
             Log.info("Opened a Tailcat tunnel for a local connection (" + active + " active)");
 

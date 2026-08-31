@@ -51,9 +51,13 @@ never rejects it for a version mismatch.
 
 3. Give players either the address or the file. That's the whole handoff.
 
-The address is stable across restarts: the mod asks tailcat for a *saved* key
-(named `minecraft` by default) rather than an ephemeral one, so players don't
-need a fresh address every time the server reboots.
+The address is stable across restarts. Two things are needed for that, and the
+mod does both: it asks tailcat for a *saved* key (named `minecraft` by default)
+rather than an ephemeral one, and it generates that key with `--fixed-region`.
+The second part matters more than it looks — a tailcat address encodes the DERP
+relay region, and without a fixed one tailcat re-picks the region by latency at
+every startup, changing the published address and stranding players who already
+saved it. A saved key on its own is not enough.
 
 ### `config/tailcat-server.json`
 
@@ -63,11 +67,13 @@ need a fresh address every time the server reboots.
 | `serverName` | `""` | Name players see. Empty derives one from the MOTD. |
 | `tailcatPath` | `""` | Use a specific tailcat executable. Empty means find or download one. |
 | `downloadTailcat` | `true` | Allow downloading tailcat if it isn't installed. |
-| `keyName` | `"minecraft"` | Saved tailcat key. This is what keeps the address stable. |
+| `keyName` | `"minecraft"` | Saved tailcat key. Change it to retire an address that has spread too far. |
+| `fixedRegion` | `true` | Bake a fixed relay region into the key. This is what keeps the address stable; see above. Applies when the key is created, so change `keyName` too. |
 | `fullAddress` | `false` | Publish a longer, self-contained address with relay details embedded. |
 | `port` | `0` | Port to expose. `0` reads `server-port` from `server.properties`. |
 | `publishPath` | `""` | Where to write the network file. Empty means `<game dir>/tailcat-network.json`. |
 | `isolateState` | `true` | Keep tailcat's saved keys inside the server directory instead of the host user's home. |
+| `tailcatArgs` | `[]` | Extra flags for every tailcat call, e.g. `"--derpmap-url=..."` to use your own relay, or `"--allow=nodekey:..."` to restrict clients. |
 
 > If you set `server-ip` in `server.properties` to a single external address,
 > the server won't be listening on `127.0.0.1` and tailcat connections will be
@@ -117,6 +123,7 @@ Restart the game. The server appears in the multiplayer list as
 | `tailcatPath` | `""` | Use a specific tailcat executable. |
 | `downloadTailcat` | `true` | Allow downloading tailcat if it isn't installed. |
 | `isolateState` | `true` | Keep tailcat's state inside the game directory. |
+| `tailcatArgs` | `[]` | Extra flags for every tailcat call, e.g. `"--derpmap-url=..."` for a self-hosted relay. |
 | `addToServerList` | `true` | Manage entries in `servers.dat`. |
 | `serverListSuffix` | `" (Tailcat)"` | Appended to each name in the multiplayer list. |
 | `importFrom` | `[]` | Files, directories, or URLs to read server details from on each launch. |
@@ -168,6 +175,19 @@ The project is two modules:
 
 That split is also why porting to NeoForge would be a short job: it's a new
 adapter over the same core, not a rewrite.
+
+## What has been verified
+
+The core logic is covered by 70 tests, and the mod's assumptions about the
+tailcat CLI were checked against a real tailcat v0.4.0 build: the `genkey`
+and `serve` flag shapes, that flags must precede positional arguments, that
+the startup banner goes to stderr, that client mode keeps stdout free of
+anything but tunnel data, and that redirecting `XDG_CONFIG_HOME`/`HOME`/
+`APPDATA` puts saved keys where the mod expects them.
+
+Not yet verified end to end: the mod has not been run inside a live Minecraft
+server and client, and the tunnel data path has not been exercised against a
+real DERP relay. Reports from real deployments are welcome.
 
 ## Caveats
 

@@ -36,6 +36,18 @@ public final class ServerConfig {
      */
     public boolean fullAddress = false;
 
+    /**
+     * Bake a fixed DERP relay region into the saved key.
+     *
+     * <p>This is what actually keeps the published address stable. Without it
+     * tailcat re-selects a region by latency at every startup and the address
+     * changes with it, breaking entries players have already saved. Turn it off
+     * only if the server moves between regions and you would rather have the
+     * best relay than a stable address; changing it takes effect when the key
+     * is next created, so also change keyName or delete the existing key.
+     */
+    public boolean fixedRegion = true;
+
     /** Port to expose. 0 means "read server-port from server.properties". */
     public int port = 0;
 
@@ -51,6 +63,15 @@ public final class ServerConfig {
      */
     public boolean isolateState = true;
 
+    /**
+     * Extra flags passed to every tailcat invocation, before the positional
+     * arguments tailcat requires them to precede.
+     *
+     * <p>Mainly for {@code --derpmap-url=...} when running your own relay, or
+     * {@code --allow=nodekey:...} to restrict which clients may connect.
+     */
+    public java.util.List<String> tailcatArgs = new java.util.ArrayList<>();
+
     public static ServerConfig load(Path file) {
         ServerConfig config = new ServerConfig();
         if (Files.isRegularFile(file)) {
@@ -63,9 +84,16 @@ public final class ServerConfig {
                 config.downloadTailcat = Json.bool(map, "downloadTailcat", config.downloadTailcat);
                 config.keyName = Json.string(map, "keyName", config.keyName);
                 config.fullAddress = Json.bool(map, "fullAddress", config.fullAddress);
+                config.fixedRegion = Json.bool(map, "fixedRegion", config.fixedRegion);
                 config.port = Json.integer(map, "port", config.port);
                 config.publishPath = Json.string(map, "publishPath", config.publishPath);
                 config.isolateState = Json.bool(map, "isolateState", config.isolateState);
+                config.tailcatArgs = new java.util.ArrayList<>();
+                for (Object item : Json.array(map, "tailcatArgs")) {
+                    if (item instanceof String && !((String) item).isBlank()) {
+                        config.tailcatArgs.add(((String) item).trim());
+                    }
+                }
             } catch (IOException | RuntimeException e) {
                 Log.error("Could not read " + file + "; using defaults", e);
             }
@@ -84,9 +112,11 @@ public final class ServerConfig {
         map.put("downloadTailcat", downloadTailcat);
         map.put("keyName", keyName);
         map.put("fullAddress", fullAddress);
+        map.put("fixedRegion", fixedRegion);
         map.put("port", port);
         map.put("publishPath", publishPath);
         map.put("isolateState", isolateState);
+        map.put("tailcatArgs", new java.util.ArrayList<Object>(tailcatArgs));
         try {
             Path parent = file.toAbsolutePath().getParent();
             if (parent != null) {
