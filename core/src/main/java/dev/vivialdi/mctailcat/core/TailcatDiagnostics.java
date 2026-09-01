@@ -1,6 +1,12 @@
 package dev.vivialdi.mctailcat.core;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -77,5 +83,68 @@ public final class TailcatDiagnostics {
         }
 
         return null;
+    }
+
+    /**
+     * Warns before anyone is turned away, rather than after.
+     *
+     * <p>{@link #explain} only fires once a player has already failed to
+     * connect, which is late: the operator has by then been told their server
+     * works. The precondition for that failure is visible at startup, so this
+     * looks for it directly -- a Windows machine with no {@code localhost} line
+     * in its hosts file is one public DNS server away from refusing everyone.
+     *
+     * <p>Deliberately not phrased as an error. A resolver that does answer
+     * {@code localhost} makes this harmless, and there is no way to tell from
+     * here which kind you have; the advice costs a line in a file either way.
+     *
+     * @return the warning to print, or null if there is nothing to say
+     */
+    public static String checkLocalhostResolves() {
+        return checkHostsFile(windowsHostsFile(), Platform.isWindows());
+    }
+
+    /** The hosts file Go's resolver reads on Windows. */
+    static Path windowsHostsFile() {
+        String systemRoot = System.getenv("SystemRoot");
+        if (systemRoot == null || systemRoot.isBlank()) {
+            systemRoot = "C:\\Windows";
+        }
+        return Paths.get(systemRoot, "System32", "drivers", "etc", "hosts");
+    }
+
+    /** Split out from {@link #checkLocalhostResolves} so it can be tested on any host. */
+    static String checkHostsFile(Path hostsFile, boolean windows) {
+        // Linux and macOS define localhost in /etc/hosts as a matter of course,
+        // so there is nothing to warn about there.
+        if (!windows) {
+            return null;
+        }
+
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(hostsFile, StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException unreadable) {
+            // Better to say nothing than to guess from a file we cannot read.
+            return null;
+        }
+
+        for (String line : lines) {
+            int comment = line.indexOf('#');
+            String active = comment >= 0 ? line.substring(0, comment) : line;
+            for (String token : active.trim().toLowerCase(Locale.ROOT).split("\\s+")) {
+                if (token.equals("localhost")) {
+                    return null;
+                }
+            }
+        }
+
+        return "This machine has no 'localhost' entry in " + hostsFile + "."
+                + " Tailcat resolves that name with its own resolver rather than asking"
+                + " Windows, so if your DNS server does not answer it, every player will be"
+                + " refused and this server will still look healthy."
+                + "\n  If players cannot connect, add this line to that file and restart:"
+                + "\n      127.0.0.1 localhost"
+                + "\n  Editing it needs administrator rights.";
     }
 }

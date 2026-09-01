@@ -5,7 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class TailcatDiagnosticsTest {
 
@@ -70,5 +75,67 @@ class TailcatDiagnosticsTest {
     void aQuietLineIsNotReported() {
         TailcatDiagnostics diagnostics = new TailcatDiagnostics();
         assertFalse(diagnostics.inspect("magicsock: home is now derp-302 (sfo)"));
+    }
+
+    // --- the startup check, which fires before anyone is turned away --------
+
+    @TempDir
+    Path tempDir;
+
+    private Path hostsContaining(String body) throws IOException {
+        Path file = tempDir.resolve("hosts-" + Math.abs(body.hashCode()));
+        Files.writeString(file, body, StandardCharsets.UTF_8);
+        return file;
+    }
+
+    @Test
+    void warnsWhenWindowsLeavesLocalhostCommentedOut() throws IOException {
+        // This is the Windows default, verbatim in spirit: the name is
+        // mentioned only inside comments.
+        Path hosts = hostsContaining(
+                "# Copyright (c) 1993-2009 Microsoft Corp.\n"
+                        + "#\n"
+                        + "# localhost name resolution is handled within DNS itself.\n"
+                        + "#\t127.0.0.1       localhost\n"
+                        + "#\t::1             localhost\n");
+
+        String warning = TailcatDiagnostics.checkHostsFile(hosts, true);
+
+        assertNotNull(warning);
+        assertTrue(warning.contains("127.0.0.1 localhost"), "the fix belongs in the warning");
+    }
+
+    @Test
+    void staysQuietOnceTheEntryIsThere() throws IOException {
+        Path hosts = hostsContaining(
+                "# some comment\n127.0.0.1 localhost\n::1 localhost\n");
+
+        assertNull(TailcatDiagnostics.checkHostsFile(hosts, true));
+    }
+
+    @Test
+    void acceptsTheEntryWhateverItsSpacingOrCase() throws IOException {
+        assertNull(TailcatDiagnostics.checkHostsFile(
+                hostsContaining("127.0.0.1\t\tLOCALHOST\n"), true));
+        assertNull(TailcatDiagnostics.checkHostsFile(
+                hostsContaining("127.0.0.1 localhost # added for tailcat\n"), true));
+        // A trailing comment must not hide a real entry, and an entry for
+        // something else must not be mistaken for one.
+        assertNotNull(TailcatDiagnostics.checkHostsFile(
+                hostsContaining("127.0.0.1 localhostfoo\n192.168.1.5 nas\n"), true));
+    }
+
+    @Test
+    void saysNothingOnLinuxOrMac() throws IOException {
+        Path hosts = hostsContaining("# nothing here at all\n");
+
+        assertNull(TailcatDiagnostics.checkHostsFile(hosts, false),
+                "/etc/hosts always defines localhost, so there is nothing to warn about");
+    }
+
+    @Test
+    void saysNothingWhenTheFileCannotBeRead() {
+        assertNull(TailcatDiagnostics.checkHostsFile(tempDir.resolve("absent"), true),
+                "guessing from a file we cannot read would be worse than silence");
     }
 }

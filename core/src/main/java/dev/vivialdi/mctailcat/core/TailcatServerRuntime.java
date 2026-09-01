@@ -63,6 +63,15 @@ public final class TailcatServerRuntime {
                         + " server.properties to accept them.");
             }
 
+            // Said up front, because the failure it predicts is invisible: the
+            // server comes up, publishes an address, and refuses every player.
+            String hostsWarning = TailcatDiagnostics.checkLocalhostResolves();
+            if (hostsWarning != null) {
+                for (String part : hostsWarning.split("\n")) {
+                    Log.warn(part);
+                }
+            }
+
             Path installDir = gameDir.resolve("tailcat");
             Path stateDir = config.isolateState ? installDir.resolve("state") : null;
             Path executable = TailcatBinary.resolve(installDir, config.tailcatPath, config.downloadTailcat);

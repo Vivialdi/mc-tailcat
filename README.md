@@ -35,6 +35,20 @@ never rejects it for a version mismatch.
 
 ## Setting up a server
 
+On Windows, [`setup-server.ps1`](setup-server.ps1) does the whole thing from
+nothing — it finds or installs a JDK, fetches the Fabric server for the version
+you name, drops the mod in, checks the [`localhost`
+prerequisite](#windows-servers-localhost-has-to-resolve), and starts it:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup-server.ps1 -AcceptEula -GameVersion 1.21.1
+```
+
+`-AcceptEula` records that you accept the [Minecraft
+EULA](https://aka.ms/MinecraftEULA); without it the script stops and leaves
+`eula.txt` for you to edit yourself. `-NoStart` sets everything up without
+launching. Otherwise, by hand:
+
 1. Put the jar in the server's `mods/` folder and start the server.
 2. On first start it writes `config/tailcat-server.json`, brings up tailcat, and
    prints a banner:
