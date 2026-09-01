@@ -58,6 +58,10 @@ public final class TcpForwarder implements AutoCloseable {
     });
     private final AtomicInteger activeConnections = new AtomicInteger();
 
+    // Shared across every connection this forwarder makes, so a server that is
+    // refusing all of them explains itself once rather than per attempt.
+    private final TailcatDiagnostics diagnostics = new TailcatDiagnostics();
+
     private ServerSocket listener;
     private Thread acceptLoop;
     private volatile boolean running;
@@ -224,13 +228,14 @@ public final class TcpForwarder implements AutoCloseable {
         out.close();
     }
 
-    private static void drainToLog(InputStream stderr) throws IOException {
+    private void drainToLog(InputStream stderr) throws IOException {
         byte[] buffer = new byte[4096];
         int read;
         while ((read = stderr.read(buffer)) != -1) {
             String text = new String(buffer, 0, read, StandardCharsets.UTF_8).strip();
             if (!text.isEmpty()) {
                 Log.info("[tailcat] " + text);
+                diagnostics.inspect(text);
             }
         }
     }
