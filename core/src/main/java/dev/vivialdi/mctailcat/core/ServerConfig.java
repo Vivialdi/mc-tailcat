@@ -72,6 +72,34 @@ public final class ServerConfig {
      */
     public java.util.List<String> tailcatArgs = new java.util.ArrayList<>();
 
+    /**
+     * Flags written into the published file for players to use, so the handoff
+     * is one artifact rather than a file plus instructions.
+     *
+     * <p>The case that matters is a self-hosted relay: a client without the
+     * same {@code --derpmap-url} cannot reach this server at all. Not derived
+     * from {@link #tailcatArgs} on purpose -- much of what belongs there is
+     * server-only, {@code --allow=nodekey:...} above all, and publishing an
+     * allowlist to everyone who has the file would be a poor trade.
+     */
+    public java.util.List<String> clientTailcatArgs = new java.util.ArrayList<>();
+
+    /**
+     * Suffix players see after this server's name in their multiplayer list.
+     * Empty leaves it to each player's own client config.
+     */
+    public String clientServerListSuffix = "";
+
+    /**
+     * Build the client-side half of the published file from these settings.
+     */
+    public NetworkDescriptor.ClientSettings clientSettings() {
+        String suffix = clientServerListSuffix == null || clientServerListSuffix.isEmpty()
+                ? null
+                : clientServerListSuffix;
+        return new NetworkDescriptor.ClientSettings(clientTailcatArgs, suffix);
+    }
+
     public static ServerConfig load(Path file) {
         ServerConfig config = new ServerConfig();
         if (Files.isRegularFile(file)) {
@@ -94,6 +122,14 @@ public final class ServerConfig {
                         config.tailcatArgs.add(((String) item).trim());
                     }
                 }
+                config.clientTailcatArgs = new java.util.ArrayList<>();
+                for (Object item : Json.array(map, "clientTailcatArgs")) {
+                    if (item instanceof String && !((String) item).isBlank()) {
+                        config.clientTailcatArgs.add(((String) item).trim());
+                    }
+                }
+                config.clientServerListSuffix =
+                        Json.string(map, "clientServerListSuffix", config.clientServerListSuffix);
             } catch (IOException | RuntimeException e) {
                 Log.error("Could not read " + file + "; using defaults", e);
             }
@@ -117,6 +153,8 @@ public final class ServerConfig {
         map.put("publishPath", publishPath);
         map.put("isolateState", isolateState);
         map.put("tailcatArgs", new java.util.ArrayList<Object>(tailcatArgs));
+        map.put("clientTailcatArgs", new java.util.ArrayList<Object>(clientTailcatArgs));
+        map.put("clientServerListSuffix", clientServerListSuffix);
         try {
             Path parent = file.toAbsolutePath().getParent();
             if (parent != null) {
