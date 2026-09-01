@@ -54,6 +54,44 @@ class ConfigTest {
     }
 
     @Test
+    void serverConfigLocksInWhatPlayersNeed() {
+        Path file = tempDir.resolve("tailcat-server.json");
+        ServerConfig config = ServerConfig.load(file);
+        config.clientTailcatArgs.add("--derpmap-url=https://relay.example/derpmap.json");
+        config.clientServerListSuffix = " [SMP]";
+        config.save(file);
+
+        ServerConfig reloaded = ServerConfig.load(file);
+        NetworkDescriptor.ClientSettings settings = reloaded.clientSettings();
+
+        assertEquals(1, settings.tailcatArgs().size());
+        assertEquals("--derpmap-url=https://relay.example/derpmap.json",
+                settings.tailcatArgs().get(0));
+        assertEquals(" [SMP]", settings.serverListSuffix());
+    }
+
+    @Test
+    void anOperatorWhoConfiguresNothingLocksNothingIn() {
+        ServerConfig config = ServerConfig.load(tempDir.resolve("tailcat-server.json"));
+
+        assertTrue(config.clientSettings().isEmpty(),
+                "a default server should publish the same file it always has");
+    }
+
+    @Test
+    void autoDiscoveryIsOnByDefaultAndRoundTrips() {
+        Path file = tempDir.resolve("tailcat-client.json");
+
+        // On by default: it is what lets a modpack ship a server.
+        assertTrue(ClientConfig.load(file).autoDiscover);
+
+        ClientConfig config = ClientConfig.load(file);
+        config.autoDiscover = false;
+        config.save(file);
+        assertFalse(ClientConfig.load(file).autoDiscover);
+    }
+
+    @Test
     void clientConfigRoundTripsServersAndSources() {
         Path file = tempDir.resolve("tailcat-client.json");
         ClientConfig config = ClientConfig.load(file);

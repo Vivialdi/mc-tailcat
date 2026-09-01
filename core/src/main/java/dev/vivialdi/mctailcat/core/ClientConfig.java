@@ -73,6 +73,20 @@ public final class ClientConfig {
     public String serverListSuffix = " (Tailcat)";
 
     /**
+     * Read any {@code tailcat-network.json} sitting in the standard places --
+     * {@code config/}, {@code config/tailcat-servers/}, the game directory --
+     * without it having to be listed in {@link #importFrom}.
+     *
+     * <p>This is what lets a modpack ship a server: the pack author drops the
+     * file the operator published into {@code config/} and a player who never
+     * opens a config file still finds the server in their multiplayer list.
+     * Servers found this way are not written into this file; the published file
+     * stays the single source of truth for them, so an updated pack simply
+     * takes effect.
+     */
+    public boolean autoDiscover = true;
+
+    /**
      * Places to pick server details up from automatically, checked on every
      * launch. Each may be a path to a {@code tailcat-network.json} written by
      * the server -- a shared folder, or the server directory itself when both
@@ -101,6 +115,7 @@ public final class ClientConfig {
                 }
                 config.addToServerList = Json.bool(map, "addToServerList", config.addToServerList);
                 config.serverListSuffix = Json.string(map, "serverListSuffix", config.serverListSuffix);
+                config.autoDiscover = Json.bool(map, "autoDiscover", config.autoDiscover);
 
                 config.importFrom = new ArrayList<>();
                 for (Object item : Json.array(map, "importFrom")) {
@@ -152,6 +167,7 @@ public final class ClientConfig {
         map.put("tailcatArgs", new ArrayList<Object>(tailcatArgs));
         map.put("addToServerList", addToServerList);
         map.put("serverListSuffix", serverListSuffix);
+        map.put("autoDiscover", autoDiscover);
         map.put("importFrom", new ArrayList<Object>(importFrom));
 
         List<Object> encoded = new ArrayList<>();

@@ -51,6 +51,12 @@ never rejects it for a version mismatch.
 
 3. Give players either the address or the file. That's the whole handoff.
 
+The file is the better half of that pair. Everything a client needs is in it —
+address, port, display name, and any client-side flags you locked in — so a
+player drops it into their `config/` folder, or a modpack ships it there, and
+they never open a config file at all. See [Handing the server to a
+group](#handing-the-server-to-a-group).
+
 The address is stable across restarts. Two things are needed for that, and the
 mod does both: it asks tailcat for a *saved* key (named `minecraft` by default)
 rather than an ephemeral one, and it generates that key with `--fixed-region`.
@@ -74,6 +80,14 @@ saved it. A saved key on its own is not enough.
 | `publishPath` | `""` | Where to write the network file. Empty means `<game dir>/tailcat-network.json`. |
 | `isolateState` | `true` | Keep tailcat's saved keys inside the server directory instead of the host user's home. |
 | `tailcatArgs` | `[]` | Extra flags for every tailcat call, e.g. `"--derpmap-url=..."` to use your own relay, or `"--allow=nodekey:..."` to restrict clients. |
+| `clientTailcatArgs` | `[]` | Flags written into the published file for *players* to use. Set this to your `"--derpmap-url=..."` if you run your own relay — without it clients cannot reach you at all. |
+| `clientServerListSuffix` | `""` | Suffix players see after this server's name in their multiplayer list, e.g. `" [SMP]"`. Empty leaves it to each player. |
+
+Those last two are the "lock it in" settings: they are copied into
+`tailcat-network.json` so the file alone is enough to connect. They are
+deliberately *not* derived from `tailcatArgs`, because most of what belongs
+there is server-only — `--allow=nodekey:...` above all, which you do not want
+published to everyone holding the file.
 
 > If you set `server-ip` in `server.properties` to a single external address,
 > the server won't be listening on `127.0.0.1` and tailcat connections will be
@@ -81,8 +95,39 @@ saved it. A saved key on its own is not enough.
 
 ## Setting up a client
 
-Put the jar in `mods/` and start the game once — it writes
-`config/tailcat-client.json`. Then give it the server, either way:
+**The short version: put the jar in `mods/`, put the server's
+`tailcat-network.json` in `config/`, start the game.** The server is in the
+multiplayer list, ready to click. There is no config file to edit.
+
+That works because the client checks a few standard places on every launch,
+with nothing configured:
+
+| Where | For |
+| --- | --- |
+| `config/tailcat-network.json` | The file the operator sent you, or the one a modpack ships. |
+| `config/tailcat-servers/*.json` | A pack that ships more than one server. |
+| `<game dir>/tailcat-network.json` | A client and server sharing one machine. |
+
+Servers found this way are **not** copied into `tailcat-client.json`. The
+published file stays the source of truth, so when the operator rotates their
+key and ships an updated pack, the existing multiplayer entry is repointed
+rather than joined by a dead one. Set `autoDiscover` to `false` to turn this
+off.
+
+### Handing the server to a group
+
+For a modpack, put the file the server published at `config/tailcat-network.json`
+inside the pack, next to the mod jar in `mods/`. Players install the pack and
+are done — no address to paste, no instructions to follow, and if you locked in
+a relay or a display name on the server, those come along with it.
+
+For a group that is not using a pack, send them the file and tell them to drop
+it in `config/`. Same result.
+
+### The manual routes
+
+Both still work, and are the right choice for a player adding one server to a
+setup they otherwise control.
 
 **Paste the address:**
 
@@ -125,7 +170,8 @@ Restart the game. The server appears in the multiplayer list as
 | `isolateState` | `true` | Keep tailcat's state inside the game directory. |
 | `tailcatArgs` | `[]` | Extra flags for every tailcat call, e.g. `"--derpmap-url=..."` for a self-hosted relay. |
 | `addToServerList` | `true` | Manage entries in `servers.dat`. |
-| `serverListSuffix` | `" (Tailcat)"` | Appended to each name in the multiplayer list. |
+| `serverListSuffix` | `" (Tailcat)"` | Appended to each name in the multiplayer list. A server that locked in its own suffix overrides this. |
+| `autoDiscover` | `true` | Pick up any `tailcat-network.json` sitting in the standard places above. This is what makes a modpack work with no setup. |
 | `importFrom` | `[]` | Files, directories, or URLs to read server details from on each launch. |
 | `servers` | `[]` | Servers to connect to. |
 
@@ -142,12 +188,20 @@ Minecraft client
 The local port is derived from a hash of the server's address, so it is the
 same every launch. That matters: the port is written into `servers.dat`, and a
 port that moved between launches would leave a dead entry in the player's list.
-If the port is genuinely taken by something else, the mod picks another and
-rewrites the entry.
+If the port is genuinely taken by something else, the mod picks another before
+writing the entry.
 
-Because the port is deterministic, the multiplayer list is written
-*synchronously* at startup while the tunnel comes up in the background — the
-entry is correct before a player could possibly reach the multiplayer screen.
+Startup order is deliberate. Choosing each port, **binding** it, and writing the
+multiplayer list all happen synchronously while the mod initialises, which is
+long before the game reaches its main menu. Only finding the tailcat binary is
+left to the background, because on a first launch that means a download.
+
+So the entry a player sees is never ahead of the listener behind it. If they
+reach the multiplayer screen while that download is still running, the
+connection waits for it rather than being refused — which on a first launch is
+the difference between joining and having to back out and try again. If the
+binary can't be had at all, the listener is closed instead, so the server
+honestly reads as down rather than accepting a connection it can never carry.
 
 ## A note on sharing the address
 
@@ -178,12 +232,22 @@ adapter over the same core, not a rewrite.
 
 ## What has been verified
 
-The core logic is covered by 70 tests, and the mod's assumptions about the
+The core logic is covered by 96 tests, and the mod's assumptions about the
 tailcat CLI were checked against a real tailcat v0.4.0 build: the `genkey`
 and `serve` flag shapes, that flags must precede positional arguments, that
 the startup banner goes to stderr, that client mode keeps stdout free of
 anything but tunnel data, and that redirecting `XDG_CONFIG_HOME`/`HOME`/
 `APPDATA` puts saved keys where the mod expects them.
+
+The handoff itself has been run end to end outside the game, against real
+files: an operator publishing with locked-in settings, a pack shipping the
+result into `config/`, and a client with no configuration discovering it,
+writing the right `servers.dat` entry, and leaving its own config untouched —
+including the rotated-key case, where the existing entry is repointed rather
+than duplicated. The first-launch ordering was checked the same way: the
+loopback port accepts a connection with zero wait after the mod initialises,
+holds one that arrives before tailcat is ready, and closes if tailcat turns out
+to be unavailable.
 
 Not yet verified end to end: the mod has not been run inside a live Minecraft
 server and client, and the tunnel data path has not been exercised against a

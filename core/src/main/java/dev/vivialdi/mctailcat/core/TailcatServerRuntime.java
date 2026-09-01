@@ -94,7 +94,8 @@ public final class TailcatServerRuntime {
             name = motd.isBlank() ? "Minecraft Server" : stripFormatting(motd);
         }
 
-        descriptor = NetworkDescriptor.of(name, address, port, properties.motd());
+        descriptor = NetworkDescriptor.of(name, address, port, properties.motd(),
+                config.clientSettings());
 
         Path target = config.publishPath == null || config.publishPath.isBlank()
                 ? gameDir.resolve(DescriptorSource.DEFAULT_FILENAME)
@@ -125,10 +126,17 @@ public final class TailcatServerRuntime {
             Log.info(" File:    " + target.toAbsolutePath());
         }
         Log.info("");
-        Log.info(" Players with the Tailcat mod installed can paste the address");
-        Log.info(" into config/tailcat-client.json, or point importFrom at the");
-        Log.info(" file above. The server then appears in their multiplayer");
-        Log.info(" list automatically the next time the game starts.");
+        if (publishedTo != null) {
+            Log.info(" Send that file to your players. They drop it into their");
+            Log.info(" config/ folder -- or a modpack ships it there -- and the");
+            Log.info(" server appears in their multiplayer list, ready to click,");
+            Log.info(" the next time the game starts. Nothing to configure.");
+        } else {
+            Log.info(" Players with the Tailcat mod installed can paste the");
+            Log.info(" address into config/tailcat-client.json. The server then");
+            Log.info(" appears in their multiplayer list automatically the next");
+            Log.info(" time the game starts.");
+        }
         Log.info("");
         Log.info(" Treat the address like an invitation: anyone who has it can");
         Log.info(" reach this server's Minecraft port.");

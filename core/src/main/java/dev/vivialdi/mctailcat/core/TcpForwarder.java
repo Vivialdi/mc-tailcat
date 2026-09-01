@@ -9,6 +9,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -24,10 +25,26 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <port>}, whose stdin and stdout are the far end of the tunnel. Minecraft
  * connects to a plain local address and never knows the difference, on any
  * version.
+ *
+ * <p>The port is bound before the tailcat binary is known, and a connection
+ * that arrives in between waits for it. That matters exactly once, on the
+ * launch where the mod has to download tailcat first: the multiplayer entry is
+ * already written, so a player who reaches the server list during the download
+ * would otherwise find a dead port and have to back out and try again. Waiting
+ * a moment is a better answer than being refused.
  */
 public final class TcpForwarder implements AutoCloseable {
 
-    private final Path executable;
+    /**
+     * How long a connection waits for a tailcat binary that is still being
+     * downloaded. Generous because the alternative is a failed join, and
+     * bounded because a wait nothing will ever satisfy is worse than an error.
+     * A download that fails releases every waiter at once rather than timing
+     * them out.
+     */
+    private static final long BINARY_WAIT_SECONDS = 60;
+
+    private final CompletableFuture<Path> executable;
     private final Path stateDir;
     private final String address;
     private final int remotePort;
@@ -51,6 +68,19 @@ public final class TcpForwarder implements AutoCloseable {
 
     public TcpForwarder(Path executable, Path stateDir, String address, int remotePort, int localPort,
             List<String> extraArgs) {
+        this(CompletableFuture.completedFuture(executable), stateDir, address, remotePort, localPort,
+                extraArgs);
+    }
+
+    /**
+     * A forwarder for a tailcat binary that is not available yet.
+     *
+     * <p>Complete {@code executable} once it has been resolved, or complete it
+     * exceptionally if it never will be -- which releases anyone waiting on it
+     * instead of leaving them to time out.
+     */
+    public TcpForwarder(CompletableFuture<Path> executable, Path stateDir, String address,
+            int remotePort, int localPort, List<String> extraArgs) {
         this.extraArgs = extraArgs == null ? List.of() : List.copyOf(extraArgs);
         this.executable = executable;
         this.stateDir = stateDir;
@@ -96,8 +126,13 @@ public final class TcpForwarder implements AutoCloseable {
             client.setTcpNoDelay(true);
             client.setKeepAlive(true);
 
+            Path binary = awaitExecutable();
+            if (binary == null) {
+                return;
+            }
+
             List<String> command =
-                    ProcessRunner.command(executable, extraArgs, address, String.valueOf(remotePort));
+                    ProcessRunner.command(binary, extraArgs, address, String.valueOf(remotePort));
             tunnel = ProcessRunner.startPiped(stateDir, command);
             Log.info("Opened a Tailcat tunnel for a local connection (" + active + " active)");
 
@@ -135,6 +170,28 @@ public final class TcpForwarder implements AutoCloseable {
                 }
             }
             activeConnections.decrementAndGet();
+        }
+    }
+
+    /**
+     * The tailcat binary, waiting for it if it is still being downloaded.
+     * Returns null if it is not going to arrive, leaving the caller to drop the
+     * connection.
+     */
+    private Path awaitExecutable() {
+        if (executable.isDone() && !executable.isCompletedExceptionally()) {
+            return executable.getNow(null);
+        }
+        try {
+            Log.info("A connection arrived before tailcat was ready; holding it open while it"
+                    + " is fetched");
+            return executable.get(BINARY_WAIT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (Exception unavailable) {
+            Log.warn("Dropping a connection to " + address + ": tailcat is not available");
+            return null;
         }
     }
 

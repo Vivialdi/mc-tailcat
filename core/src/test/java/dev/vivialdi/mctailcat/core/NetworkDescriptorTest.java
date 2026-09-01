@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -90,6 +91,53 @@ class NetworkDescriptorTest {
         assertEquals(ADDRESS, DescriptorSource.load(directory.toString()).address());
         assertEquals(ADDRESS, DescriptorSource.load(
                 directory.resolve(DescriptorSource.DEFAULT_FILENAME).toString()).address());
+    }
+
+    @Test
+    void carriesTheSettingsAnOperatorLockedIn() {
+        NetworkDescriptor original = NetworkDescriptor.of("Survival", ADDRESS, 25565, "",
+                new NetworkDescriptor.ClientSettings(
+                        List.of("--derpmap-url=https://relay.example/derpmap.json"), " [SMP]"));
+
+        NetworkDescriptor parsed = NetworkDescriptor.parse(original.toJson());
+
+        assertEquals(List.of("--derpmap-url=https://relay.example/derpmap.json"),
+                parsed.client().tailcatArgs());
+        assertEquals(" [SMP]", parsed.client().serverListSuffix());
+    }
+
+    @Test
+    void locksNothingInByDefault() {
+        NetworkDescriptor descriptor = NetworkDescriptor.of("Survival", ADDRESS, 25565, "");
+
+        assertTrue(descriptor.client().isEmpty());
+        // A server that locks nothing in publishes the file it always did.
+        assertFalse(descriptor.toJson().contains("client"));
+        assertTrue(NetworkDescriptor.parse(descriptor.toJson()).client().isEmpty());
+    }
+
+    @Test
+    void aFileFromAnOlderServerStillReads() {
+        String published = "{\"formatVersion\":1,\"name\":\"Survival\",\"address\":\"" + ADDRESS
+                + "\",\"port\":25565,\"motd\":\"\",\"updatedAt\":\"\"}";
+
+        NetworkDescriptor parsed = NetworkDescriptor.parse(published);
+
+        assertTrue(parsed.isUsable());
+        assertTrue(parsed.client().isEmpty());
+        assertNull(parsed.client().serverListSuffix());
+    }
+
+    @Test
+    void anEmptySuffixIsAnOperatorAskingForNoSuffix() {
+        // Absent means "leave the player's own alone"; present but empty means
+        // "no suffix at all", and the two must not collapse into each other.
+        NetworkDescriptor explicit = NetworkDescriptor.of("Survival", ADDRESS, 25565, "",
+                new NetworkDescriptor.ClientSettings(List.of(), ""));
+
+        assertEquals("", NetworkDescriptor.parse(explicit.toJson()).client().serverListSuffix());
+        assertNull(NetworkDescriptor.of("Survival", ADDRESS, 25565, "")
+                .client().serverListSuffix());
     }
 
     @Test
