@@ -13,6 +13,7 @@
     "issues": "https://github.com/vivialdi/mc-tailcat/issues"
   },
   "license": "MIT",
+  "accessWidener": "tailcat-gui.accesswidener",
   "environment": "client",
   "entrypoints": {
     "client": [

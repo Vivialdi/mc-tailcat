@@ -124,12 +124,15 @@ public class AddTailcatServerScreen extends Screen {
 
     @Override
     public void close() {
-        // The multiplayer screen loads servers.dat once, when it is built, and
-        // re-initialising it rebuilds the widget from that same in-memory list.
-        // So returning to it is not enough: without re-reading the file the
-        // player sees nothing until they press Refresh. Reload it first.
+        // Going back to the same MultiplayerScreen instance shows nothing new:
+        // its list widget keeps its own copy of the entries, and re-initialising
+        // the screen reuses that widget rather than rebuilding it, so reloading
+        // the ServerList underneath changes nothing on display. Vanilla's own
+        // Refresh button does not reload either -- it constructs a fresh screen.
+        // Do the same. `parent` is private, hence the access widener.
         if (this.parent instanceof MultiplayerScreen multiplayer) {
-            multiplayer.getServerList().loadFile();
+            this.client.setScreen(new MultiplayerScreen(multiplayer.parent));
+            return;
         }
         this.client.setScreen(this.parent);
     }

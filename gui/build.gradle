@@ -15,6 +15,10 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 21
 }
 
+loom {
+    accessWidenerPath = file('src/main/resources/tailcat-gui.accesswidener')
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${project.property('gui_minecraft_version')}"
     mappings "net.fabricmc:yarn:${project.property('gui_yarn_mappings')}:v2"
