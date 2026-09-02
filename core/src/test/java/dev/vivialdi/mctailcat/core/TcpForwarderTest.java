@@ -54,7 +54,7 @@ class TcpForwarderTest {
 
             byte[] payload = "handshake packet".getBytes(StandardCharsets.UTF_8);
             try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), localPort), 10_000);
+                socket.connect(new InetSocketAddress(PortAllocator.LOOPBACK, localPort), 10_000);
                 socket.setSoTimeout(20_000);
 
                 OutputStream out = socket.getOutputStream();
@@ -79,7 +79,7 @@ class TcpForwarderTest {
                 byte[] payload = ("connection-" + attempt).getBytes(StandardCharsets.UTF_8);
                 try (Socket socket = new Socket()) {
                     socket.connect(
-                            new InetSocketAddress(InetAddress.getLoopbackAddress(), localPort), 10_000);
+                            new InetSocketAddress(PortAllocator.LOOPBACK, localPort), 10_000);
                     socket.setSoTimeout(20_000);
                     socket.getOutputStream().write(payload);
                     socket.getOutputStream().flush();
@@ -121,7 +121,7 @@ class TcpForwarderTest {
     }
 
     private static int freePort() throws IOException {
-        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+        try (ServerSocket socket = new ServerSocket(0, 1, PortAllocator.LOOPBACK)) {
             return socket.getLocalPort();
         }
     }

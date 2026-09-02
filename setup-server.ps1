@@ -4,6 +4,7 @@
 #
 #   powershell -ExecutionPolicy Bypass -File setup-server.ps1 -AcceptEula
 #   powershell -ExecutionPolicy Bypass -File setup-server.ps1 -AcceptEula -GameVersion 1.20.1
+#   powershell -ExecutionPolicy Bypass -File setup-server.ps1 -AcceptEula -Loader neoforge
 #
 # -AcceptEula records that you accept the Minecraft EULA (https://aka.ms/MinecraftEULA).
 # Without it the script stops and leaves eula.txt for you to edit yourself.
@@ -13,6 +14,7 @@ param(
     [int]$Port = 25565,
     [string]$Motd = 'A Tailcat Server',
     [string]$Repo = 'Vivialdi/mc-tailcat',
+    [ValidateSet('fabric', 'neoforge')][string]$Loader = 'fabric',
     [switch]$AcceptEula,
     [switch]$NoStart
 )
@@ -101,34 +103,54 @@ if ($java) {
 }
 
 # --- 3. Server files -----------------------------------------------------
-Step "Setting up a Fabric $GameVersion server in $Directory"
+Step "Setting up a $Loader $GameVersion server in $Directory"
 New-Item -ItemType Directory -Force -Path "$Directory\mods" | Out-Null
 
-# Windows PowerShell hands the JSON array back wrapped inside another array, so
-# indexing it without unwrapping gives you every loader version at once.
-$builds = Invoke-RestMethod "https://meta.fabricmc.net/v2/versions/loader/$GameVersion"
-if ($builds -is [array] -and $builds.Count -ge 1 -and $builds[0] -is [array]) { $builds = $builds[0] }
-$builds = @($builds)
-if ($builds.Count -eq 0) { throw "Minecraft $GameVersion is not a version Fabric supports" }
-$stable = @($builds | Where-Object { $_.loader.stable })
-$loader = if ($stable.Count -gt 0) { $stable[0].loader.version } else { $builds[0].loader.version }
-if (-not $loader -or $loader -isnot [string]) {
-    throw "Could not determine a Fabric loader version for Minecraft $GameVersion"
+if ($Loader -eq 'fabric') {
+    # Windows PowerShell hands the JSON array back wrapped inside another array,
+    # so indexing it without unwrapping gives you every loader version at once.
+    $builds = Invoke-RestMethod "https://meta.fabricmc.net/v2/versions/loader/$GameVersion"
+    if ($builds -is [array] -and $builds.Count -ge 1 -and $builds[0] -is [array]) { $builds = $builds[0] }
+    $builds = @($builds)
+    if ($builds.Count -eq 0) { throw "Minecraft $GameVersion is not a version Fabric supports" }
+    $stable = @($builds | Where-Object { $_.loader.stable })
+    $loaderVer = if ($stable.Count -gt 0) { $stable[0].loader.version } else { $builds[0].loader.version }
+    if (-not $loaderVer -or $loaderVer -isnot [string]) {
+        throw "Could not determine a Fabric loader version for Minecraft $GameVersion"
+    }
+    Write-Host "  Fabric loader $loaderVer"
+    Invoke-WebRequest -UseBasicParsing -OutFile "$Directory\fabric-server-launch.jar" `
+        -Uri "https://meta.fabricmc.net/v2/versions/loader/$GameVersion/$loaderVer/1.1.2/server/jar"
+    $launch = @('-jar', 'fabric-server-launch.jar', 'nogui')
+    $jarPattern = '^tailcat-[0-9][^/]*\.jar$'
+} else {
+    # NeoForge versions track Minecraft: 1.21.1 is the 21.1.x line. Newest wins.
+    if ($GameVersion -notmatch '^1\.(\d+)\.(\d+)$') { throw "Cannot map Minecraft $GameVersion to a NeoForge line" }
+    $line = "$($Matches[1]).$($Matches[2])."
+    [xml]$meta = (Invoke-WebRequest -UseBasicParsing 'https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml').Content
+    $nf = @($meta.metadata.versioning.versions.version | Where-Object { $_ -like "$line*" -and $_ -notmatch 'beta' }) | Select-Object -Last 1
+    if (-not $nf) { throw "No NeoForge release found for Minecraft $GameVersion" }
+    Write-Host "  NeoForge $nf"
+    $installer = Join-Path $env:TEMP "neoforge-$nf-installer.jar"
+    Invoke-WebRequest -UseBasicParsing -OutFile $installer `
+        -Uri "https://maven.neoforged.net/releases/net/neoforged/neoforge/$nf/neoforge-$nf-installer.jar"
+    & $java -jar $installer --install-server $Directory | Select-Object -Last 1
+    if ($LASTEXITCODE -ne 0) { throw "NeoForge installer failed with exit code $LASTEXITCODE" }
+    $launch = @("@libraries/net/neoforged/neoforge/$nf/win_args.txt", 'nogui')
+    $jarPattern = '^tailcat-neoforge-[0-9][^/]*\.jar$'
 }
-Write-Host "  Fabric loader $loader"
-
-Invoke-WebRequest -UseBasicParsing -OutFile "$Directory\fabric-server-launch.jar" `
-    -Uri "https://meta.fabricmc.net/v2/versions/loader/$GameVersion/$loader/1.1.2/server/jar"
 
 # The mod jar, in order of preference: next to this script, built from a clone
 # of this repo, or downloaded from the latest release. The last case is the one
 # that matters for someone who found this on GitHub and has nothing else.
 $modJar = Get-ChildItem $PSScriptRoot -Filter 'tailcat-*.jar' -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -notlike '*-gui-*' } |
-    Select-Object -First 1
+    Where-Object { $_.Name -match $jarPattern -and $_.Name -notlike '*-gui-*' -and $_.Name -notlike '*-sources*' } |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if (-not $modJar) {
-    $modJar = Get-ChildItem "$PSScriptRoot\fabric\build\libs" -Filter 'tailcat-*.jar' `
-        -ErrorAction SilentlyContinue | Select-Object -First 1
+    $buildDir = if ($Loader -eq 'fabric') { "$PSScriptRoot\fabric\build\libs" } else { "$PSScriptRoot\neoforge\build\libs" }
+    $modJar = Get-ChildItem $buildDir -Filter 'tailcat-*.jar' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match $jarPattern -and $_.Name -notlike '*-gui-*' -and $_.Name -notlike '*-sources*' } |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
 }
 
 if ($modJar) {
@@ -147,7 +169,7 @@ if ($modJar) {
     # useless on a server. Match the main jar by its versioned name and never
     # rely on which asset the API happens to list first.
     $asset = @($release.assets) |
-        Where-Object { $_.name -match '^tailcat-[0-9][^/]*\.jar$' -and $_.name -notlike '*-gui-*' } |
+        Where-Object { $_.name -match $jarPattern -and $_.name -notlike '*-gui-*' -and $_.name -notlike '*-sources*' } |
         Select-Object -First 1
     if (-not $asset) {
         throw "Release $($release.tag_name) has no tailcat jar attached."
@@ -183,7 +205,7 @@ if ($AcceptEula) {
 # --- 5. Go ---------------------------------------------------------------
 if ($NoStart) {
     Step 'Done (not starting, -NoStart was given)'
-    Write-Host "  Start it with:  & `"$java`" -Xmx2G -jar `"$Directory\fabric-server-launch.jar`" nogui"
+    Write-Host "  Start it with, from inside ${Directory}:  & `"$java`" -Xmx2G $($launch -join ' ')"
     return
 }
 
@@ -194,5 +216,5 @@ Write-Host "      $Directory\tailcat-network.json" -ForegroundColor Green
 Write-Host "  They drop it into their config/ folder, or you ship it in your modpack."
 Write-Host ""
 Push-Location $Directory
-try { & $java -Xmx2G -jar 'fabric-server-launch.jar' nogui }
+try { & $java -Xmx2G @launch }
 finally { Pop-Location }

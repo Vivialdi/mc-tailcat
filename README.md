@@ -26,9 +26,28 @@ That means **one jar runs on every Minecraft version Fabric Loader supports**,
 `minecraft` entry in `fabric.mod.json`'s dependencies at all, so the loader
 never rejects it for a version mismatch.
 
+## Fabric or NeoForge
+
+Two builds of the same mod:
+
+| Jar | Loader | Minecraft | What's in it |
+| --- | --- | --- | --- |
+| `tailcat-<ver>.jar` | Fabric | **any**, 1.17+ | The mod. No Minecraft classes, so one jar runs everywhere. |
+| `tailcat-gui-<ver>.jar` | Fabric | 1.21.1 only | Optional. The **+ Tailcat** paste button. Needs Fabric API. |
+| `tailcat-neoforge-<ver>.jar` | NeoForge | 1.21.1 only | The mod **and** the paste button, in one jar. |
+
+The Fabric main jar is version-independent because it compiles against Fabric
+Loader alone. NeoForge has no equivalent path — every NeoForge mod is built
+against one NeoForge/Minecraft version — so there is nothing to gain from
+splitting it, and the NeoForge jar is one file, version-locked, with the GUI
+included. Same `core` underneath; only the adapter around it differs, which is
+what the design was for. Both were verified live: a dedicated server of each
+loader publishing an address, and a client reaching it through the tunnel.
+
 ## Requirements
 
-- Fabric Loader 0.14 or newer, on Minecraft 1.17+ (Java 17 is the real floor).
+- Fabric Loader 0.14 or newer, on Minecraft 1.17+ (Java 17 is the real floor);
+  or NeoForge 21.1 on Minecraft 1.21.1 (Java 21).
 - `tailcat`. If it isn't installed, the mod downloads a copy into the game
   directory and verifies it against the release's published SHA-256. tailcat
   needs no root and no account.

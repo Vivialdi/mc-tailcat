@@ -98,7 +98,9 @@ public final class TcpForwarder implements AutoCloseable {
         if (running) {
             return;
         }
-        listener = new ServerSocket(localPort, 16, InetAddress.getLoopbackAddress());
+        // Explicitly 127.0.0.1, never getLoopbackAddress(): on a JVM that
+        // prefers IPv6 that is ::1, and the multiplayer entry says 127.0.0.1.
+        listener = new ServerSocket(localPort, 16, PortAllocator.LOOPBACK);
         running = true;
 
         acceptLoop = new Thread(this::acceptForever, "tailcat-accept-" + localPort);
@@ -160,6 +162,12 @@ public final class TcpForwarder implements AutoCloseable {
             Log.error("Tailcat tunnel failed for " + address + ":" + remotePort, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } catch (RuntimeException | Error e) {
+            // Anything else would vanish into the thread pool: the connection
+            // closes, the game shows "can't connect", and nothing says why.
+            // A silent failure is the one kind that cannot be diagnosed from
+            // a player's log, so name it.
+            Log.error("Tailcat tunnel failed unexpectedly for " + address + ":" + remotePort, e);
         } finally {
             closeQuietly(client);
             if (tunnel != null) {
@@ -253,7 +261,7 @@ public final class TcpForwarder implements AutoCloseable {
     }
 
     public String localAddress() {
-        return "127.0.0.1:" + localPort;
+        return PortAllocator.localAddress(localPort);
     }
 
     public String remoteAddress() {

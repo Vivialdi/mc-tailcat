@@ -1,0 +1,69 @@
+// The NeoForge build.
+//
+// Fabric lets the main mod compile against the loader alone, which is what
+// makes one Fabric jar run on every Minecraft version. NeoForge has no such
+// path: every mod is built against one NeoForge/Minecraft version. So there
+// is nothing to gain from keeping the main mod and the GUI apart here -- this
+// is one jar, version-locked, with both. The core logic is the same classes
+// the Fabric jar bundles; only the adapter around it differs.
+plugins {
+    id 'net.neoforged.moddev' version '2.0.146'
+}
+
+// Minecraft 1.21.1 runs on Java 21, unlike the version-independent modules.
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+neoForge {
+    version = project.property('neoforge_version')
+
+    // The multiplayer screen's previous-screen field is private, and the GUI
+    // has to construct a fresh JoinMultiplayerScreen to show a newly added
+    // server (its list widget keeps its own copy of the entries).
+    accessTransformers.from('src/main/resources/META-INF/accesstransformer.cfg')
+
+    mods {
+        tailcat {
+            sourceSet sourceSets.main
+        }
+    }
+
+    runs {
+        client {
+            client()
+        }
+        server {
+            server()
+        }
+    }
+}
+
+dependencies {
+    implementation project(':core')
+}
+
+processResources {
+    inputs.property 'version', project.version
+    inputs.property 'mod_id', project.property('mod_id')
+    inputs.property 'mod_name', project.property('mod_name')
+    inputs.property 'neoforge_version', project.property('neoforge_version')
+
+    filesMatching('META-INF/neoforge.mods.toml') {
+        expand(
+            version: project.version,
+            mod_id: project.property('mod_id'),
+            mod_name: project.property('mod_name'),
+            neoforge_version: project.property('neoforge_version')
+        )
+    }
+}
+
+// Fold :core straight into the mod jar, as the Fabric jar does.
+jar {
+    from project(':core').sourceSets.main.output
+}
+
+base {
+    archivesName = project.property('mod_id') + '-neoforge'
+}
