@@ -68,6 +68,16 @@ EULA](https://aka.ms/MinecraftEULA); without it the script stops and leaves
 `eula.txt` for you to edit yourself. `-NoStart` sets everything up without
 launching. Otherwise, by hand:
 
+For a modpack server, [`make-server-mods.ps1`](make-server-mods.ps1) copies the
+server-side subset of an imported pack's `mods/` folder into the server's,
+leaving out client-only mods (renderers, minimaps, HUD tweaks) that would be
+dead weight or a crash on a dedicated server, and keeping tailcat:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File make-server-mods.ps1 -From "<pack>\mods" -To "<server>\mods"
+```
+
+
 1. Put the jar in the server's `mods/` folder and start the server.
 2. On first start it writes `config/tailcat-server.json`, brings up tailcat, and
    prints a banner:
