@@ -44,7 +44,7 @@ class PortAllocatorTest {
     void stepsPastAPortThatIsAlreadyTaken() throws Exception {
         int preferred = PortAllocator.preferredPort(ADDRESS_A, 25565);
         try (ServerSocket blocker =
-                     new ServerSocket(preferred, 1, InetAddress.getLoopbackAddress())) {
+                     new ServerSocket(preferred, 1, PortAllocator.LOOPBACK)) {
             assertTrue(blocker.isBound());
             int allocated = PortAllocator.allocate(ADDRESS_A, 25565);
             assertNotEquals(preferred, allocated);
@@ -56,7 +56,7 @@ class PortAllocatorTest {
     void reportsAvailabilityHonestly() throws Exception {
         int preferred = PortAllocator.preferredPort(ADDRESS_B, 25565);
         try (ServerSocket blocker =
-                     new ServerSocket(preferred, 1, InetAddress.getLoopbackAddress())) {
+                     new ServerSocket(preferred, 1, PortAllocator.LOOPBACK)) {
             assertTrue(blocker.isBound());
             org.junit.jupiter.api.Assertions.assertFalse(PortAllocator.isAvailable(preferred));
         }

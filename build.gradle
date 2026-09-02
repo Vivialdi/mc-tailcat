@@ -29,5 +29,11 @@ subprojects {
     tasks.withType(Test).configureEach {
         useJUnitPlatform()
         testLogging { events 'passed', 'skipped', 'failed' }
+        // Run the suite the way NeoForge runs the game. Its launch arguments
+        // make the JVM prefer IPv6, which turns getLoopbackAddress() into ::1
+        // -- and a listener bound there is invisible to a game connecting to
+        // 127.0.0.1. The suite passed for weeks without this flag while that
+        // bug was live; it must not be possible to pass that way again.
+        jvmArgs '-Djava.net.preferIPv6Addresses=true'
     }
 }

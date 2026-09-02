@@ -34,7 +34,7 @@ class PendingBinaryTest {
             "tcEXAMPLEaddressForDocsAndTestsOnly_NotARealServer00000000";
 
     private static int freePort() throws IOException {
-        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+        try (ServerSocket probe = new ServerSocket(0, 1, PortAllocator.LOOPBACK)) {
             return probe.getLocalPort();
         }
     }
@@ -45,7 +45,7 @@ class PendingBinaryTest {
 
     private static Socket connect(int port) throws IOException {
         Socket socket = new Socket();
-        socket.connect(new InetSocketAddress(InetAddress.getLoopbackAddress(), port), 2000);
+        socket.connect(new InetSocketAddress(PortAllocator.LOOPBACK, port), 2000);
         return socket;
     }
 
@@ -114,6 +114,27 @@ class PendingBinaryTest {
         // Closing is what turns "still starting" into "this server is down",
         // which is the honest signal when tailcat could not be had at all.
         assertThrows(ConnectException.class, () -> connect(port));
+    }
+
+    @Test
+    @Timeout(30)
+    void listensOnIpv4LoopbackWhateverTheJvmPrefers() throws Exception {
+        // The multiplayer entry says 127.0.0.1 in so many words. On a JVM that
+        // prefers IPv6 -- NeoForge's launch arguments make it one --
+        // getLoopbackAddress() is ::1, and a listener bound there is invisible
+        // to a game connecting over IPv4: every entry shows "Can't connect".
+        // So connect with a literal IPv4 address, not whatever the JVM picks.
+        int port = freePort();
+        InetAddress v4 = InetAddress.getByAddress(new byte[] {127, 0, 0, 1});
+        assertTrue(v4 instanceof java.net.Inet4Address);
+
+        try (TcpForwarder forwarder = forwarderFor(new CompletableFuture<>(), port)) {
+            forwarder.start();
+            try (Socket player = new Socket()) {
+                player.connect(new InetSocketAddress(v4, port), 2000);
+                assertTrue(player.isConnected(), "must be reachable at 127.0.0.1 specifically");
+            }
+        }
     }
 
     @Test

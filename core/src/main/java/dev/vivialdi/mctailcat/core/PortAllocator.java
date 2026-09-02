@@ -22,6 +22,30 @@ public final class PortAllocator {
     private static final int RANGE_SIZE = 10_000;
     private static final int MAX_PROBES = 64;
 
+    /**
+     * The address every listener binds and every multiplayer entry names.
+     *
+     * <p>Not {@link InetAddress#getLoopbackAddress()}: that returns {@code ::1}
+     * on a JVM that prefers IPv6, and NeoForge's launch arguments make it one.
+     * The multiplayer list says {@code 127.0.0.1} in so many words, so the
+     * listener has to be there in so many words -- on Fabric the two only ever
+     * agreed by luck.
+     */
+    public static final InetAddress LOOPBACK;
+
+    static {
+        try {
+            LOOPBACK = InetAddress.getByAddress("127.0.0.1", new byte[] {127, 0, 0, 1});
+        } catch (java.net.UnknownHostException impossible) {
+            throw new IllegalStateException("127.0.0.1 is not a valid address?", impossible);
+        }
+    }
+
+    /** What goes in the multiplayer list for a local port. */
+    public static String localAddress(int port) {
+        return "127.0.0.1:" + port;
+    }
+
     private PortAllocator() {
     }
 
@@ -53,7 +77,7 @@ public final class PortAllocator {
 
     /** Tests whether a loopback port can be bound right now. */
     public static boolean isAvailable(int port) {
-        try (ServerSocket socket = new ServerSocket(port, 1, InetAddress.getLoopbackAddress())) {
+        try (ServerSocket socket = new ServerSocket(port, 1, LOOPBACK)) {
             return socket.getLocalPort() == port;
         } catch (IOException taken) {
             return false;

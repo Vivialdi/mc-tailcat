@@ -360,7 +360,7 @@ public final class TailcatClientRuntime {
                 continue;
             }
             changed |= list.upsert(target.displayName(config.serverListSuffix),
-                    "127.0.0.1:" + port);
+                    PortAllocator.localAddress(port));
         }
 
         if (!changed) {
