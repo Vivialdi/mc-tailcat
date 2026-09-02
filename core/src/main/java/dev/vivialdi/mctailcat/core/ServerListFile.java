@@ -8,6 +8,8 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -80,33 +82,46 @@ public final class ServerListFile {
     /**
      * Inserts or updates the entry for a Tailcat server.
      *
-     * <p>An existing entry is matched by display name first, then by address,
-     * so renaming an entry in game or changing the local port does not leave a
-     * duplicate behind. Returns {@code true} if anything actually changed.
+     * <p>The address is the mod's to manage; the label is the player's. So an
+     * entry found <em>by address</em> is left named however the player named
+     * it — someone who renames a server in the multiplayer screen should not
+     * find it renamed back on the next launch. An entry found only by name is
+     * one whose local port has moved, and its address is corrected in place.
+     *
+     * <p>The cost of that is an operator renaming their server does not
+     * propagate to players who already have the entry, only to new ones. That
+     * is the better way round: a stale label is a cosmetic annoyance, while
+     * silently undoing what a player did is the kind of thing that makes a mod
+     * feel broken.
+     *
+     * @return true if anything actually changed
      */
     public boolean upsert(String name, String address) {
         Nbt.TagList servers = servers();
-        Nbt.Compound match = null;
+        Nbt.Compound byAddress = null;
+        Nbt.Compound byName = null;
 
         for (Object item : servers.items()) {
             if (!(item instanceof Nbt.Compound)) {
                 continue;
             }
             Nbt.Compound entry = (Nbt.Compound) item;
-            if (name.equals(entry.getString("name", null))
-                    || address.equals(entry.getString("ip", null))) {
-                match = entry;
-                break;
+            if (byAddress == null && address.equals(entry.getString("ip", null))) {
+                byAddress = entry;
+            } else if (byName == null && name.equals(entry.getString("name", null))) {
+                byName = entry;
             }
         }
 
-        if (match != null) {
-            if (name.equals(match.getString("name", null))
-                    && address.equals(match.getString("ip", null))) {
-                return false;
-            }
-            match.putString("name", name);
-            match.putString("ip", address);
+        // Already pointing where it should. Whatever it is called is the
+        // player's business.
+        if (byAddress != null) {
+            return false;
+        }
+
+        // Same server, different local port: correct the address, keep the name.
+        if (byName != null) {
+            byName.putString("ip", address);
             return true;
         }
 
@@ -116,6 +131,17 @@ public final class ServerListFile {
         entry.putByte("hidden", (byte) 0);
         servers.add(Nbt.TAG_COMPOUND, entry);
         return true;
+    }
+
+    /** The display names currently in the list, in order. */
+    public List<String> names() {
+        List<String> names = new ArrayList<>();
+        for (Object item : servers().items()) {
+            if (item instanceof Nbt.Compound) {
+                names.add(((Nbt.Compound) item).getString("name", ""));
+            }
+        }
+        return names;
     }
 
     /** Removes any entry with this display name. Returns true if one was removed. */

@@ -58,6 +58,69 @@ class ServerListFileTest {
         assertEquals(1, ServerListFile.load(file).count());
     }
 
+    /** Writes a servers.dat holding one entry, the way the game itself would. */
+    private Path listContaining(String name, String ip) throws IOException {
+        Path file = tempDir.resolve("servers.dat");
+        Nbt.Compound root = new Nbt.Compound();
+        Nbt.TagList servers = new Nbt.TagList(Nbt.TAG_COMPOUND);
+        Nbt.Compound entry = new Nbt.Compound();
+        entry.putString("name", name);
+        entry.putString("ip", ip);
+        entry.putByte("hidden", (byte) 0);
+        servers.add(Nbt.TAG_COMPOUND, entry);
+        root.put("servers", Nbt.TAG_LIST, servers);
+        try (var out = Files.newOutputStream(file)) {
+            Nbt.writeRoot(out, root);
+        }
+        return file;
+    }
+
+    @Test
+    void leavesAPlayersOwnNameAlone() throws IOException {
+        // The player renamed it in the multiplayer screen; the address is still
+        // the one the mod put there.
+        Path file = listContaining("Dave's SMP", "127.0.0.1:31234");
+
+        ServerListFile relaunch = ServerListFile.load(file);
+        assertFalse(relaunch.upsert("Survival (Tailcat)", "127.0.0.1:31234"),
+                "an entry already at the right address needs no change");
+        relaunch.save();
+
+        assertEquals(1, ServerListFile.load(file).count());
+        assertEquals("Dave's SMP", ServerListFile.load(file).names().get(0),
+                "the label belongs to the player, not the mod");
+    }
+
+    @Test
+    void repointsARenamedEntryWhenThePortMoves() throws IOException {
+        Path file = listContaining("Dave's SMP", "127.0.0.1:31234");
+
+        // The operator rotated their key, so the deterministic port moved. The
+        // entry has to follow or the player is left with a dead server. Matched
+        // by name, since the address no longer matches.
+        ServerListFile moved = ServerListFile.load(file);
+        assertTrue(moved.upsert("Dave's SMP", "127.0.0.1:39999"));
+        moved.save();
+
+        assertEquals(1, ServerListFile.load(file).count());
+        assertEquals("Dave's SMP", ServerListFile.load(file).names().get(0));
+    }
+
+    @Test
+    void aRenamedEntryWhosePortMovesIsLeftForTheNewOneRatherThanHijacked() throws IOException {
+        // A player renamed the entry AND the port moved, so neither name nor
+        // address matches. There is nothing to recognise it by, so a fresh
+        // entry appears and the old one is left alone rather than guessed at.
+        Path file = listContaining("Dave's SMP", "127.0.0.1:31234");
+
+        ServerListFile list = ServerListFile.load(file);
+        assertTrue(list.upsert("Survival (Tailcat)", "127.0.0.1:39999"));
+        list.save();
+
+        assertEquals(2, ServerListFile.load(file).count(),
+                "the mod cannot tell these are the same server, so it adds rather than clobbers");
+    }
+
     @Test
     void reportsNoChangeWhenTheEntryAlreadyMatches() throws IOException {
         Path file = tempDir.resolve("servers.dat");
