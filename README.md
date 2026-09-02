@@ -35,6 +35,20 @@ never rejects it for a version mismatch.
 
 ## Setting up a server
 
+On Windows, [`setup-server.ps1`](setup-server.ps1) does the whole thing from
+nothing — it finds or installs a JDK, fetches the Fabric server for the version
+you name, drops the mod in, checks the [`localhost`
+prerequisite](#windows-servers-localhost-has-to-resolve), and starts it:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup-server.ps1 -AcceptEula -GameVersion 1.21.1
+```
+
+`-AcceptEula` records that you accept the [Minecraft
+EULA](https://aka.ms/MinecraftEULA); without it the script stops and leaves
+`eula.txt` for you to edit yourself. `-NoStart` sets everything up without
+launching. Otherwise, by hand:
+
 1. Put the jar in the server's `mods/` folder and start the server.
 2. On first start it writes `config/tailcat-server.json`, brings up tailcat, and
    prints a banner:
@@ -92,6 +106,35 @@ published to everyone holding the file.
 > If you set `server-ip` in `server.properties` to a single external address,
 > the server won't be listening on `127.0.0.1` and tailcat connections will be
 > refused. Leave `server-ip` empty. The mod warns about this at startup.
+
+### Windows servers: `localhost` has to resolve
+
+If you run the server on Windows, check that your hosts file has this line:
+
+```
+127.0.0.1 localhost
+```
+
+On a default Windows install it is **commented out**, because Windows answers
+`localhost` inside its DNS Client service rather than from a file. tailcat is
+built with Go's own resolver (`netgo`), which never asks that service — it goes
+straight to your configured DNS server. A public resolver like `1.1.1.1` or
+`8.8.8.8` has no record for `localhost`, so tailcat cannot resolve the address
+it proxies connections to, and **every player is refused with nothing in the
+log to explain it**.
+
+The symptom is a server that looks perfectly healthy — banner printed, address
+published, tailcat running — while clients see only `connection reset by peer`.
+The real cause appears once, in the server's own console:
+
+```
+error proxying to localhost:25565: dial tcp: lookup localhost on 1.1.1.1:53: no such host
+```
+
+The mod watches for that line and prints the fix. Adding the hosts entry
+(`C:\Windows\System32\drivers\etc\hosts`, needs administrator rights) and
+restarting the server resolves it. Linux and macOS define `localhost` in
+`/etc/hosts` as a matter of course, so this only bites on Windows.
 
 ## Setting up a client
 
@@ -232,7 +275,7 @@ adapter over the same core, not a rewrite.
 
 ## What has been verified
 
-The core logic is covered by 96 tests, and the mod's assumptions about the
+The core logic is covered by 101 tests, and the mod's assumptions about the
 tailcat CLI were checked against a real tailcat v0.4.0 build: the `genkey`
 and `serve` flag shapes, that flags must precede positional arguments, that
 the startup banner goes to stderr, that client mode keeps stdout free of
@@ -249,15 +292,44 @@ loopback port accepts a connection with zero wait after the mod initialises,
 holds one that arrives before tailcat is ready, and closes if tailcat turns out
 to be unavailable.
 
-Not yet verified end to end: the mod has not been run inside a live Minecraft
-server and client, and the tunnel data path has not been exercised against a
-real DERP relay. Reports from real deployments are welcome.
+**The whole thing has now been run in a live game.** A player joined a real
+dedicated server through the tunnel, over a real DERP relay, having done
+nothing but drop the published `tailcat-network.json` into `config/`. The
+server logged them arriving from `[::1]` — tailcat handing the connection over
+loopback — and they spawned in the world.
+
+Specifically confirmed by that run:
+
+- The same jar loaded on **Minecraft 1.20.1 and 1.21.1**, under Fabric Loader
+  0.16.2 and 0.19.3, with no version-specific build. This is the claim the
+  whole design rests on.
+- The server downloaded tailcat on first start, verified it against the
+  published SHA-256, created its saved key, and published the file.
+- The address was **unchanged across a full server restart**, which is what
+  `fixedRegion` plus a saved key is for.
+- The supervisor restarted tailcat by itself after the process was killed, with
+  backoff, and republished the same address.
+- The client found the shipped file with no configuration, wrote the right
+  `servers.dat` entry before the tunnel existed, and held a connection open
+  while it downloaded its own copy of tailcat — the first-launch case, arriving
+  unprompted in a real launch.
+- It coexisted with unrelated client mods (Sodium, Iris) without interacting
+  with them.
+
+Still not exercised: a direct peer-to-peer path rather than a relayed one, and
+anything beyond a short session — no long-running stability or throughput
+testing.
 
 ## Caveats
 
 - tailcat is new and makes no CLI stability promises. If a future release
   changes its flags or output, this mod may need updating; `tailcatPath` lets
   you pin a known-good binary in the meantime.
+- tailcat 0.4.0 proxies to the hostname `localhost` rather than to `127.0.0.1`,
+  which makes a Windows server dependent on that name resolving. See
+  [Windows servers](#windows-servers-localhost-has-to-resolve). Nothing the mod
+  passes on the command line can avoid it — `serve` takes ports, not addresses —
+  so the mod detects the failure and prints the fix instead.
 - Traffic that can't establish a direct path falls back to a public DERP relay,
   which has no uptime guarantee and will add latency.
 - The mod manages entries in `servers.dat`. It matches on name or address and

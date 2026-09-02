@@ -38,6 +38,7 @@ public final class TailcatService implements AutoCloseable {
 
     private final AtomicReference<String> address = new AtomicReference<>();
     private final CountDownLatch addressReady = new CountDownLatch(1);
+    private final TailcatDiagnostics diagnostics = new TailcatDiagnostics();
 
     private volatile boolean running;
     private volatile Process process;
@@ -207,6 +208,7 @@ public final class TailcatService implements AutoCloseable {
             return;
         }
         Log.info("[tailcat] " + trimmed);
+        diagnostics.inspect(trimmed);
 
         String found = NetworkDescriptor.findAddress(trimmed);
         if (found != null) {
