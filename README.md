@@ -179,7 +179,7 @@ setup they otherwise control.
   "servers": [
     {
       "name": "Survival",
-      "address": "tcomFwWCCcjS5nKNqAod034nWoJZW0LZqDhhC8U_dKdnDRYQ8uNGFpGQEu",
+      "address": "tcEXAMPLEaddressForDocsAndTestsOnly_NotARealServer00000000",
       "port": 25565,
       "enabled": true
     }

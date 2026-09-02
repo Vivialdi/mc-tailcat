@@ -11,9 +11,9 @@ import org.junit.jupiter.api.Test;
 class PortAllocatorTest {
 
     private static final String ADDRESS_A =
-            "tcomFwWCCcjS5nKNqAod034nWoJZW0LZqDhhC8U_dKdnDRYQ8uNGFpGQEu";
+            "tcEXAMPLEaddressForDocsAndTestsOnly_NotARealServer00000000";
     private static final String ADDRESS_B =
-            "tcZZZwWCCcjS5nKNqAod034nWoJZW0LZqDhhC8U_dKdnDRYQ8uNGFpGQEu";
+            "tcEXAMPLEsecondServerForTestsOnly_NotARealServer0000000000";
 
     @Test
     void isStableAcrossCalls() {

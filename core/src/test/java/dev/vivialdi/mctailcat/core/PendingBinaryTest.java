@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Timeout;
 class PendingBinaryTest {
 
     private static final String ADDRESS =
-            "tcomFwWCCcjS5nKNqAod034nWoJZW0LZqDhhC8U_dKdnDRYQ8uNGFpGQEu";
+            "tcEXAMPLEaddressForDocsAndTestsOnly_NotARealServer00000000";
 
     private static int freePort() throws IOException {
         try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {

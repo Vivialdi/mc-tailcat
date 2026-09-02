@@ -18,7 +18,7 @@ import org.junit.jupiter.api.io.TempDir;
 class DiscoveryTest {
 
     private static final String ADDRESS =
-            "tcomFwWCCcjS5nKNqAod034nWoJZW0LZqDhhC8U_dKdnDRYQ8uNGFpGQEu";
+            "tcEXAMPLEaddressForDocsAndTestsOnly_NotARealServer00000000";
     private static final String OTHER =
             "tcQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ_dKdnDRYQ8u";
 
