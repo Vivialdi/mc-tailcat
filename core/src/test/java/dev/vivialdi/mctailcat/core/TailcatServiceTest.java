@@ -23,8 +23,14 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class TailcatServiceTest {
 
+    /**
+     * Shaped like a real address — the {@code tc} prefix and base64url payload
+     * the parser insists on — but obviously invented, so nothing here reads as
+     * an invitation to somebody's actual server.
+     */
     private static final String ADDRESS =
-            "tco2FwWCC0n9xrup1cykRo4wPvldieGyM8uYXeuyqUikCmZL1tEmFrWCBNmPbXZsIlRzbCQGsI24DbF4mi7_S0d3sGYug1r4_4EmFpGQOE";
+            "tcEXAMPLEaddressForTestsOnly_NotARealServer_0000000000000000000000"
+                    + "0000000000000000000000000000000000000EXAMPLE";
 
     @TempDir
     Path tempDir;

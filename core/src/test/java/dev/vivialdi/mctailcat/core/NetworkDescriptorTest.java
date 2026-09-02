@@ -14,7 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 class NetworkDescriptorTest {
 
     private static final String ADDRESS =
-            "tcomFwWCCcjS5nKNqAod034nWoJZW0LZqDhhC8U_dKdnDRYQ8uNGFpGQEu";
+            "tcEXAMPLEaddressForDocsAndTestsOnly_NotARealServer00000000";
 
     @TempDir
     Path tempDir;
