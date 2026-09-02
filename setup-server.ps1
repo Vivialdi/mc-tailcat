@@ -12,6 +12,7 @@ param(
     [string]$Directory = "$PWD\tailcat-server",
     [int]$Port = 25565,
     [string]$Motd = 'A Tailcat Server',
+    [string]$Repo = 'Vivialdi/mc-tailcat',
     [switch]$AcceptEula,
     [switch]$NoStart
 )
@@ -119,18 +120,37 @@ Write-Host "  Fabric loader $loader"
 Invoke-WebRequest -UseBasicParsing -OutFile "$Directory\fabric-server-launch.jar" `
     -Uri "https://meta.fabricmc.net/v2/versions/loader/$GameVersion/$loader/1.1.2/server/jar"
 
-# The mod jar: next to this script, or built from this repo.
+# The mod jar, in order of preference: next to this script, built from a clone
+# of this repo, or downloaded from the latest release. The last case is the one
+# that matters for someone who found this on GitHub and has nothing else.
 $modJar = Get-ChildItem $PSScriptRoot -Filter 'tailcat-*.jar' -ErrorAction SilentlyContinue |
     Select-Object -First 1
 if (-not $modJar) {
     $modJar = Get-ChildItem "$PSScriptRoot\fabric\build\libs" -Filter 'tailcat-*.jar' `
         -ErrorAction SilentlyContinue | Select-Object -First 1
 }
-if (-not $modJar) {
-    throw "No tailcat-*.jar found. Put the mod jar next to this script, or run .\gradlew build first."
+
+if ($modJar) {
+    Copy-Item $modJar.FullName "$Directory\mods\" -Force
+    Write-Host "  mod: $($modJar.Name)"
+} else {
+    Write-Host "  no local jar; fetching the latest release from $Repo"
+    try {
+        $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/latest" `
+            -Headers @{ 'User-Agent' = 'mc-tailcat-setup' }
+    } catch {
+        throw ("No tailcat jar here and no published release to fall back on. Either put " +
+               "tailcat-*.jar next to this script, or clone the repo and run .\gradlew build.")
+    }
+    $asset = @($release.assets) | Where-Object { $_.name -like 'tailcat*.jar' } | Select-Object -First 1
+    if (-not $asset) {
+        throw "Release $($release.tag_name) has no tailcat jar attached."
+    }
+    $target = Join-Path "$Directory\mods" $asset.name
+    Invoke-WebRequest -UseBasicParsing -Uri $asset.browser_download_url -OutFile $target
+    if ((Get-Item $target).Length -lt 1000) { throw "The downloaded jar looks truncated." }
+    Write-Host "  mod: $($asset.name) from release $($release.tag_name)"
 }
-Copy-Item $modJar.FullName "$Directory\mods\" -Force
-Write-Host "  mod: $($modJar.Name)"
 
 if (-not (Test-Path "$Directory\server.properties")) {
     @(
