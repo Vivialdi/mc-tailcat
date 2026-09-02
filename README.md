@@ -167,6 +167,33 @@ a relay or a display name on the server, those come along with it.
 For a group that is not using a pack, send them the file and tell them to drop
 it in `config/`. Same result.
 
+### Adding a server in-game: the optional GUI
+
+For a pack pinned to one Minecraft version, there is a small companion mod,
+`tailcat-gui`, that puts a **+ Tailcat** button on the multiplayer screen. A
+player pastes an address there and the server appears in their list
+immediately, no restart; servers they added are listed with a **Forget**
+button so a mistyped one can be removed rather than haunting the list forever.
+
+It is a separate jar on purpose. Drawing a screen means Minecraft classes,
+mappings and Fabric API, all of which are tied to a version — everything the
+main mod is built to avoid. So the main jar stays version-independent, and the
+companion is locked to one Minecraft version (currently **1.21.1**), built
+with Fabric Loom, and needs **Fabric API** at runtime. A pack ships all three;
+a pack that does not want a button ships only the main jar and loses nothing
+else.
+
+The companion requires the main mod at the same version or newer. Pairing it
+with an older `tailcat` jar fails to launch with a clear message rather than
+crashing later.
+
+Worth knowing before relying on the paste box: a tailcat address carries no
+checksum, so a truncated paste or a stray keystroke produces an address that is
+accepted and simply never connects. The screen shows what it parsed and how
+long it is so that is visible before you press Add — but a file your pack
+ships cannot be mistyped, which is why `config/tailcat-network.json` remains
+the better route for a server everyone should have.
+
 ### The manual routes
 
 Both still work, and are the right choice for a player adding one server to a

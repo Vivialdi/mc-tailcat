@@ -10,3 +10,6 @@ rootProject.name = 'mc-tailcat'
 
 include 'core'
 include 'fabric'
+
+// Optional, and version-locked; see gui/build.gradle for why it is separate.
+include 'gui'

@@ -1,0 +1,7 @@
+accessWidener v2 named
+
+# Returning to the multiplayer screen must rebuild it, the way its own Refresh
+# button does, or a server added meanwhile is not shown: the list widget keeps
+# its own copy of the entries and re-initialising the screen reuses it. A new
+# MultiplayerScreen needs the screen it should go back to, which is private.
+accessible field net/minecraft/client/gui/screen/multiplayer/MultiplayerScreen parent Lnet/minecraft/client/gui/screen/Screen;

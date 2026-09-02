@@ -34,7 +34,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tailcat-mod
-          path: fabric/build/libs/*.jar
+          path: |
+            fabric/build/libs/*.jar
+            gui/build/libs/*.jar
           if-no-files-found: error
 
       - name: Upload test reports
