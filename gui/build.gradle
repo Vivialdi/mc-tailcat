@@ -1,0 +1,49 @@
+// The optional GUI companion mod.
+//
+// Everything else in this repository compiles against Fabric Loader alone,
+// which is why one jar runs on every Minecraft version. Drawing a screen
+// cannot be done that way: it means Minecraft classes, mappings, and Fabric
+// API, all of which are version-specific. So it lives here, in its own jar,
+// and the main mod stays as it was. A pack ships both; a pack that does not
+// want a user interface ships only the main jar.
+plugins {
+    id 'fabric-loom' version '1.11.8'
+}
+
+// Minecraft 1.21.1 runs on Java 21, unlike the version-independent modules.
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.property('gui_minecraft_version')}"
+    mappings "net.fabricmc:yarn:${project.property('gui_yarn_mappings')}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.property('fabric_loader_version')}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.property('gui_fabric_api_version')}"
+
+    // The main mod's logic. Compiled against, not bundled: at runtime these
+    // classes come from the tailcat jar, which this mod depends on.
+    compileOnly project(':core')
+}
+
+processResources {
+    inputs.property 'version', project.version
+    inputs.property 'mod_id', project.property('mod_id')
+    inputs.property 'loader_version', project.property('fabric_loader_version')
+    inputs.property 'minecraft_version', project.property('gui_minecraft_version')
+
+    filesMatching('fabric.mod.json') {
+        expand(
+            version: project.version,
+            mod_id: project.property('mod_id'),
+            loader_version: project.property('fabric_loader_version'),
+            minecraft_version: project.property('gui_minecraft_version')
+        )
+    }
+}
+
+// Loom's remapJar is what actually ships, so name the artifact through the
+// base extension rather than the jar task, which it supersedes.
+base {
+    archivesName = project.property('mod_id') + '-gui'
+}

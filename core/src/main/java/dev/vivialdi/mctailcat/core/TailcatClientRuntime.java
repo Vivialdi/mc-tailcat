@@ -33,19 +33,35 @@ public final class TailcatClientRuntime {
     private final Path gameDir;
     private final Path configDir;
 
+    /**
+     * The runtime this launch is using, for anything that needs to reach it
+     * without having been handed a reference — a user interface added by a
+     * companion mod, most of all. Null before the client starts and after it
+     * stops.
+     */
+    private static volatile TailcatClientRuntime active;
+
     private final List<TcpForwarder> forwarders = new CopyOnWriteArrayList<>();
     private final Map<ServerTarget, Integer> assignedPorts = new LinkedHashMap<>();
 
     private ClientConfig config;
+    private Path configFile;
+    private CompletableFuture<Path> executable;
 
     public TailcatClientRuntime(Path gameDir, Path configDir) {
         this.gameDir = gameDir;
         this.configDir = configDir;
     }
 
+    /** The running client runtime, or null if there isn't one. */
+    public static TailcatClientRuntime current() {
+        return active;
+    }
+
     public void start() {
-        Path configFile = configDir.resolve("tailcat-client.json");
+        configFile = configDir.resolve("tailcat-client.json");
         config = ClientConfig.load(configFile);
+        active = this;
         if (!config.enabled) {
             Log.info("Tailcat is disabled in config/tailcat-client.json");
             return;
@@ -65,7 +81,7 @@ public final class TailcatClientRuntime {
 
         // Bind every port before writing the list, so the entry a player sees
         // is never ahead of the listener behind it.
-        CompletableFuture<Path> executable = new CompletableFuture<>();
+        executable = new CompletableFuture<>();
         openListeners(targets, executable);
         if (config.addToServerList) {
             updateServerList();
@@ -110,6 +126,64 @@ public final class TailcatClientRuntime {
         }
 
         return ServerTarget.deduplicate(targets);
+    }
+
+    /**
+     * Adds a server while the game is running, as if the player had put it in
+     * their config and relaunched.
+     *
+     * <p>The whole point is that they do not have to relaunch: the port is
+     * bound, the multiplayer list is written, and the tunnel comes up behind
+     * it, all before this returns. Minecraft re-reads {@code servers.dat} when
+     * the multiplayer screen is opened, so the entry is there the next time the
+     * player looks at it.
+     *
+     * <p>Unlike a discovered server this one <em>is</em> written to the
+     * player's config, because they typed it: it is theirs, and it should
+     * survive the next launch.
+     *
+     * @return an empty string on success, or a reason the address was refused
+     */
+    public synchronized String addServer(String address, String name, int port) {
+        if (config == null) {
+            return "Tailcat is not running.";
+        }
+        String trimmed = address == null ? "" : address.trim();
+        // Accept a whole pasted line, which is usually what an operator sends.
+        String found = NetworkDescriptor.findAddress(trimmed);
+        if (found == null) {
+            return "That does not contain a Tailcat address.";
+        }
+        int remotePort = port > 0 && port <= 65535 ? port : ServerProperties.DEFAULT_PORT;
+        String label = name == null || name.isBlank() ? "Tailcat Server" : name.trim();
+
+        for (ServerTarget existing : assignedPorts.keySet()) {
+            if (existing.address().equals(found)) {
+                return "That server is already in your list.";
+            }
+        }
+
+        ClientConfig.Entry entry = new ClientConfig.Entry(label, found, remotePort);
+        config.servers.add(entry);
+        config.save(configFile);
+
+        ServerTarget target = ServerTarget.of(entry);
+        if (executable == null) {
+            // start() bailed out early, so nothing is resolving the binary.
+            executable = new CompletableFuture<>();
+            Thread thread = new Thread(() -> resolveExecutable(executable), "tailcat-client-start");
+            thread.setDaemon(true);
+            thread.start();
+        }
+        openListeners(List.of(target), executable);
+        if (!assignedPorts.containsKey(target)) {
+            return "No free local port was available for that server.";
+        }
+        if (config.addToServerList) {
+            updateServerList();
+        }
+        Log.info("Added Tailcat server '" + label + "' at the player's request");
+        return "";
     }
 
     /** Pulls in descriptors from every configured source. Returns true if config changed. */
@@ -218,5 +292,8 @@ public final class TailcatClientRuntime {
             forwarder.close();
         }
         forwarders.clear();
+        if (active == this) {
+            active = null;
+        }
     }
 }
