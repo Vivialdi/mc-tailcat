@@ -124,6 +124,7 @@ Invoke-WebRequest -UseBasicParsing -OutFile "$Directory\fabric-server-launch.jar
 # of this repo, or downloaded from the latest release. The last case is the one
 # that matters for someone who found this on GitHub and has nothing else.
 $modJar = Get-ChildItem $PSScriptRoot -Filter 'tailcat-*.jar' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -notlike '*-gui-*' } |
     Select-Object -First 1
 if (-not $modJar) {
     $modJar = Get-ChildItem "$PSScriptRoot\fabric\build\libs" -Filter 'tailcat-*.jar' `
@@ -142,7 +143,12 @@ if ($modJar) {
         throw ("No tailcat jar here and no published release to fall back on. Either put " +
                "tailcat-*.jar next to this script, or clone the repo and run .\gradlew build.")
     }
-    $asset = @($release.assets) | Where-Object { $_.name -like 'tailcat*.jar' } | Select-Object -First 1
+    # The release also carries the GUI companion, which is client-only and
+    # useless on a server. Match the main jar by its versioned name and never
+    # rely on which asset the API happens to list first.
+    $asset = @($release.assets) |
+        Where-Object { $_.name -match '^tailcat-[0-9][^/]*\.jar$' -and $_.name -notlike '*-gui-*' } |
+        Select-Object -First 1
     if (-not $asset) {
         throw "Release $($release.tag_name) has no tailcat jar attached."
     }
