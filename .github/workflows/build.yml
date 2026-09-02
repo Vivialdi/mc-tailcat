@@ -37,6 +37,7 @@ jobs:
           path: |
             fabric/build/libs/*.jar
             gui/build/libs/*.jar
+            neoforge/build/libs/*.jar
           if-no-files-found: error
 
       - name: Upload test reports
