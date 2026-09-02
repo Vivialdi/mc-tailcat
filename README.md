@@ -44,7 +44,7 @@ never rejects it for a version mismatch.
     This server is reachable over Tailcat. No port forwarding
     needed -- give players either of the following.
 
-    Address: tcomFwWCCcjS5nKNqAod034nWoJZW0LZqDhhC8U_dKdnDRYQ8uNGFpGQEu
+    Address: xxxxxxxxxxxxxxxxxxxxxxxxxxx
     File:    /srv/minecraft/tailcat-network.json
    ===============================================================
    ```
