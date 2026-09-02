@@ -7,7 +7,9 @@
 # Client-only mods -- renderers, HUD tweaks, minimaps, animations -- are left
 # out: on a dedicated server they are at best dead weight and at worst a crash
 # at startup. Everything else, including tailcat, is copied. The exclusion list
-# covers the common client-only mods; add your own with -AlsoExclude.
+# covers the common client-only mods; add your own with -AlsoExclude. Only
+# exclude a mod that nothing else hard-depends on -- Simply Tooltips looks
+# client-only but Simply More refuses to load without it.
 param(
     [Parameter(Mandatory = $true)][string]$From,
     [Parameter(Mandatory = $true)][string]$To,
@@ -22,7 +24,7 @@ $clientOnly = @(
     'sodium-', 'iris-', 'iris-flywheel-compat', 'reeses-sodium-options', 'oculus', 'rubidium', 'embeddium',
     'entityculling', 'lambdynamiclights', 'dynamiclights', 'notenoughanimations', 'justzoom', 'zoomify',
     'xaeroworldmap', 'xaerominimap', 'journeymap', 'ambientsounds', 'immediatelyfast', 'modelfix',
-    'mousetweaks', 'enchdesc', 'simplytooltips', 'overflowingbars', 'betteradvancements', 'legendarytooltips',
+    'mousetweaks', 'enchdesc', 'overflowingbars', 'betteradvancements', 'legendarytooltips',
     'emi_enchanting', 'emi_loot', 'emi_ores', 'distanthorizons', 'controlling', 'betterf3', 'drippyloadingscreen',
     'fancymenu', 'presencefootsteps', 'shulkerboxtooltip', 'blur', 'skinlayers3d', 'bettermounthud',
     'continuity', 'cullleaves', 'entitytexturefeatures', 'entitymodelfeatures', 'moreculling'
