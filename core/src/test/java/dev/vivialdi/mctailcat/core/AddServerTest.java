@@ -22,6 +22,8 @@ class AddServerTest {
 
     private static final String ADDRESS =
             "tcEXAMPLEaddressForDocsAndTestsOnly_NotARealServer00000000";
+    private static final String OTHER =
+            "tcEXAMPLEsecondServerForTestsOnly_NotARealServer0000000000";
 
     @TempDir
     Path gameDir;
@@ -107,14 +109,92 @@ class AddServerTest {
     }
 
     @Test
-    void refusesADuplicateRatherThanOpeningASecondTunnel() throws IOException {
+    void addingTheSameServerTwiceDoesNotOpenASecondTunnel() throws IOException {
         TailcatClientRuntime started = started();
         assertEquals("", started.addServer(ADDRESS, "First", 25565));
 
-        String second = started.addServer(ADDRESS, "Second", 25565);
-        assertNotEquals("", second);
-        assertTrue(second.toLowerCase().contains("already"));
+        // Adding it again succeeds rather than erroring, but must not
+        // duplicate the entry or stand up a second tunnel for one server.
+        assertEquals("", started.addServer(ADDRESS, "Second", 25565));
         assertEquals(1, ServerListFile.load(gameDir.resolve("servers.dat")).count());
+    }
+
+    @Test
+    void putsTheEntryBackWhenThePlayerDeletedIt() throws IOException {
+        TailcatClientRuntime started = started();
+        started.addServer(ADDRESS, "Dave's SMP", 25565);
+
+        // The player deletes it in the multiplayer screen, then changes their
+        // mind and pastes the address again. Refusing would leave them with no
+        // way back short of relaunching the game.
+        ServerListFile list = ServerListFile.load(gameDir.resolve("servers.dat"));
+        assertTrue(list.remove("Dave's SMP (Tailcat)"));
+        list.save();
+        assertEquals(0, ServerListFile.load(gameDir.resolve("servers.dat")).count());
+
+        assertEquals("", started.addServer(ADDRESS, "Dave's SMP", 25565));
+
+        ServerListFile after = ServerListFile.load(gameDir.resolve("servers.dat"));
+        assertEquals(1, after.count(), "the entry should be back");
+        assertEquals("Dave's SMP (Tailcat)", after.names().get(0));
+    }
+
+    @Test
+    void forgetsAServerTheyAddedByMistake() throws IOException {
+        TailcatClientRuntime started = started();
+        started.addServer(ADDRESS, "Typo", 25565);
+        assertEquals(1, started.typedServers().size());
+        assertEquals(1, ServerListFile.load(gameDir.resolve("servers.dat")).count());
+
+        assertTrue(started.removeServer(ADDRESS));
+
+        assertTrue(started.typedServers().isEmpty(), "gone from the config");
+        assertEquals(0, ServerListFile.load(gameDir.resolve("servers.dat")).count(),
+                "and out of the multiplayer list");
+    }
+
+    @Test
+    void aForgottenServerStaysForgottenAcrossLaunches() throws IOException {
+        TailcatClientRuntime started = started();
+        started.addServer(ADDRESS, "Typo", 25565);
+        started.removeServer(ADDRESS);
+        started.stop();
+
+        // The whole point: a mistyped address must not come back next launch.
+        Path configDir = gameDir.resolve("config");
+        runtime = new TailcatClientRuntime(gameDir, configDir);
+        runtime.start();
+
+        assertTrue(runtime.typedServers().isEmpty());
+        assertEquals(0, ServerListFile.load(gameDir.resolve("servers.dat")).count());
+    }
+
+    @Test
+    void addingOneServerDoesNotResurrectAnotherThePlayerDeleted() throws IOException {
+        TailcatClientRuntime started = started();
+        started.addServer(ADDRESS, "First", 25565);
+        assertEquals(1, ServerListFile.load(gameDir.resolve("servers.dat")).count());
+
+        // The player deletes it in the multiplayer screen.
+        ServerListFile list = ServerListFile.load(gameDir.resolve("servers.dat"));
+        list.remove("First (Tailcat)");
+        list.save();
+
+        // Then adds a completely different server. Only that one should appear:
+        // rewriting every known entry would quietly bring back the one they
+        // had just got rid of.
+        assertEquals("", started.addServer(OTHER, "Second", 25565));
+
+        ServerListFile after = ServerListFile.load(gameDir.resolve("servers.dat"));
+        assertEquals(1, after.count(), "only the server just added");
+        assertEquals("Second (Tailcat)", after.names().get(0));
+    }
+
+    @Test
+    void forgettingSomethingNotThereIsHarmless() throws IOException {
+        TailcatClientRuntime started = started();
+        assertFalse(started.removeServer(ADDRESS));
+        assertFalse(started.removeServer(null));
     }
 
     @Test

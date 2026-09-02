@@ -1,11 +1,15 @@
 package dev.vivialdi.mctailcat.gui;
 
+import dev.vivialdi.mctailcat.core.ClientConfig;
+import dev.vivialdi.mctailcat.core.NetworkDescriptor;
 import dev.vivialdi.mctailcat.core.TailcatClientRuntime;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.multiplayer.MultiplayerScreen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
+import java.util.List;
 import net.minecraft.util.Formatting;
 
 /**
@@ -23,6 +27,7 @@ public class AddTailcatServerScreen extends Screen {
     private TextFieldWidget addressField;
     private ButtonWidget addButton;
     private Text error = Text.empty();
+    private List<ClientConfig.Entry> typed = List.of();
 
     public AddTailcatServerScreen(Screen parent) {
         super(Text.literal("Add a Tailcat Server"));
@@ -56,13 +61,48 @@ public class AddTailcatServerScreen extends Screen {
                 .dimensions(centre + 2, top + 96, 98, 20)
                 .build());
 
+        // Anything the player added themselves, with a way to take it back.
+        // Without this a mistyped address is permanent: deleting the row only
+        // lasts until the next launch, because the config puts it back.
+        TailcatClientRuntime runtime = TailcatClientRuntime.current();
+        this.typed = runtime == null ? List.of() : runtime.typedServers();
+        int row = top + 132;
+        for (ClientConfig.Entry entry : this.typed) {
+            String address = entry.address;
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Forget"), b -> forget(address))
+                    .dimensions(centre + 42, row, 58, 20)
+                    .build());
+            row += 22;
+            if (row > this.height - 40) {
+                break;
+            }
+        }
+
         this.setInitialFocus(this.addressField);
         refresh();
     }
 
-    /** The Add button means nothing until there is something to add. */
+    private void forget(String address) {
+        TailcatClientRuntime runtime = TailcatClientRuntime.current();
+        if (runtime != null) {
+            runtime.removeServer(address);
+        }
+        this.error = Text.empty();
+        // Rebuild so the row disappears with it.
+        this.clearAndInit();
+    }
+
+    /**
+     * The Add button means nothing until there is something to add.
+     *
+     * <p>Guarded because this runs from a text field listener, and a screen is
+     * re-initialised on every window resize: a keystroke arriving mid-rebuild
+     * should not take the game down.
+     */
     private void refresh() {
-        this.addButton.active = !this.addressField.getText().isBlank();
+        if (this.addButton != null && this.addressField != null) {
+            this.addButton.active = !this.addressField.getText().isBlank();
+        }
     }
 
     private void add() {
@@ -84,8 +124,13 @@ public class AddTailcatServerScreen extends Screen {
 
     @Override
     public void close() {
-        // Back to the multiplayer list, which re-reads servers.dat as it opens,
-        // so a server added here is in the list the moment the player returns.
+        // The multiplayer screen loads servers.dat once, when it is built, and
+        // re-initialising it rebuilds the widget from that same in-memory list.
+        // So returning to it is not enough: without re-reading the file the
+        // player sees nothing until they press Refresh. Reload it first.
+        if (this.parent instanceof MultiplayerScreen multiplayer) {
+            multiplayer.getServerList().loadFile();
+        }
         this.client.setScreen(this.parent);
     }
 
@@ -102,14 +147,54 @@ public class AddTailcatServerScreen extends Screen {
         context.drawTextWithShadow(this.textRenderer, Text.literal("Tailcat address"), centre - 100,
                 top + 36, 0xA0A0A0);
 
-        if (this.error.getString().isEmpty()) {
-            context.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("Paste the address or the whole line you were sent.")
-                            .formatted(Formatting.GRAY),
-                    centre, top + 72, 0xA0A0A0);
-        } else {
+        int row = top + 132;
+        if (!this.typed.isEmpty()) {
+            context.drawTextWithShadow(this.textRenderer,
+                    Text.literal("Servers you added").formatted(Formatting.GRAY),
+                    centre - 100, row - 12, 0xA0A0A0);
+        }
+        for (ClientConfig.Entry entry : this.typed) {
+            if (row > this.height - 40) {
+                break;
+            }
+            context.drawTextWithShadow(this.textRenderer, Text.literal(entry.name), centre - 100,
+                    row + 6, 0xFFFFFF);
+            row += 22;
+        }
+
+        if (!this.error.getString().isEmpty()) {
             context.drawCenteredTextWithShadow(this.textRenderer, this.error, centre, top + 72,
                     0xFF5555);
+        } else {
+            context.drawCenteredTextWithShadow(this.textRenderer, preview(), centre, top + 72,
+                    0xA0A0A0);
         }
+    }
+
+    /**
+     * What will actually be used, shown back to the player.
+     *
+     * <p>Nothing here can tell a real address from a mistyped one — an address
+     * carries no checksum, so anything of the right shape is accepted and only
+     * fails later, as a server that never responds. Showing the parsed result
+     * and its length at least makes a truncated paste or a stray keystroke
+     * visible before it becomes an entry that will never connect.
+     */
+    private Text preview() {
+        String typed = this.addressField.getText();
+        if (typed.isBlank()) {
+            return Text.literal("Paste the address or the whole line you were sent.")
+                    .formatted(Formatting.GRAY);
+        }
+        String address = NetworkDescriptor.findAddress(typed);
+        if (address == null) {
+            return Text.literal("No Tailcat address found in that text.")
+                    .formatted(Formatting.RED);
+        }
+        String shown = address.length() <= 24
+                ? address
+                : address.substring(0, 12) + "..." + address.substring(address.length() - 8);
+        return Text.literal(shown + "  (" + address.length() + " characters)")
+                .formatted(Formatting.GRAY);
     }
 }

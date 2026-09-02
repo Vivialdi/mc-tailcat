@@ -3,6 +3,7 @@ package dev.vivialdi.mctailcat.core;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -159,7 +160,16 @@ public final class TailcatClientRuntime {
 
         for (ServerTarget existing : assignedPorts.keySet()) {
             if (existing.address().equals(found)) {
-                return "That server is already in your list.";
+                // A tunnel is already up for this address, but the player may
+                // have deleted the multiplayer entry and be adding it back --
+                // which is the only way they can, short of relaunching. So put
+                // the entry back rather than refusing and leaving them stuck.
+                if (config.addToServerList) {
+                    updateServerList(List.of(existing));
+                }
+                Log.info("Tailcat server at that address was already running; "
+                        + "made sure it is in the multiplayer list");
+                return "";
             }
         }
 
@@ -180,10 +190,72 @@ public final class TailcatClientRuntime {
             return "No free local port was available for that server.";
         }
         if (config.addToServerList) {
-            updateServerList();
+            updateServerList(List.of(target));
         }
         Log.info("Added Tailcat server '" + label + "' at the player's request");
         return "";
+    }
+
+    /**
+     * The servers the player typed in themselves, which are the only ones they
+     * can remove — a server their modpack ships comes back from the published
+     * file whatever anyone does.
+     */
+    public synchronized List<ClientConfig.Entry> typedServers() {
+        return config == null ? List.of() : List.copyOf(config.servers);
+    }
+
+    /**
+     * Forgets a server the player added.
+     *
+     * <p>Deleting the row in the multiplayer screen is not enough on its own:
+     * the entry is written again at the next launch from the config, so a
+     * mistyped address would otherwise haunt the list forever with no way to
+     * be rid of it. This drops it from the config, closes its tunnel, and
+     * takes the row out of the list.
+     *
+     * @return true if there was such a server to forget
+     */
+    public synchronized boolean removeServer(String address) {
+        if (config == null || address == null) {
+            return false;
+        }
+        String wanted = address.trim();
+        if (!config.servers.removeIf(entry -> wanted.equals(entry.address))) {
+            return false;
+        }
+        config.save(configFile);
+
+        ServerTarget target = null;
+        for (ServerTarget candidate : assignedPorts.keySet()) {
+            if (candidate.address().equals(wanted)) {
+                target = candidate;
+                break;
+            }
+        }
+        if (target != null) {
+            Integer port = assignedPorts.remove(target);
+            for (TcpForwarder forwarder : forwarders) {
+                if (port != null && forwarder.localPort() == port) {
+                    forwarder.close();
+                    forwarders.remove(forwarder);
+                    break;
+                }
+            }
+            if (config.addToServerList) {
+                Path file = gameDir.resolve("servers.dat");
+                ServerListFile list = ServerListFile.load(file);
+                if (list != null && list.remove(target.displayName(config.serverListSuffix))) {
+                    try {
+                        list.save();
+                    } catch (IOException e) {
+                        Log.error("Could not update " + file, e);
+                    }
+                }
+            }
+        }
+        Log.info("Forgot the Tailcat server at " + wanted);
+        return true;
     }
 
     /** Pulls in descriptors from every configured source. Returns true if config changed. */
@@ -263,6 +335,18 @@ public final class TailcatClientRuntime {
     }
 
     private void updateServerList() {
+        updateServerList(assignedPorts.keySet());
+    }
+
+    /**
+     * Writes list entries for just these servers.
+     *
+     * <p>Which servers matters. At startup it is all of them, but when the
+     * player adds one it must be that one alone: rewriting every entry would
+     * resurrect rows the player had deleted, so adding one server would
+     * silently bring back another they had just got rid of.
+     */
+    private void updateServerList(Collection<ServerTarget> targets) {
         Path file = gameDir.resolve("servers.dat");
         ServerListFile list = ServerListFile.load(file);
         if (list == null) {
@@ -270,10 +354,13 @@ public final class TailcatClientRuntime {
         }
 
         boolean changed = false;
-        for (Map.Entry<ServerTarget, Integer> assignment : assignedPorts.entrySet()) {
-            ServerTarget target = assignment.getKey();
+        for (ServerTarget target : targets) {
+            Integer port = assignedPorts.get(target);
+            if (port == null) {
+                continue;
+            }
             changed |= list.upsert(target.displayName(config.serverListSuffix),
-                    "127.0.0.1:" + assignment.getValue());
+                    "127.0.0.1:" + port);
         }
 
         if (!changed) {
