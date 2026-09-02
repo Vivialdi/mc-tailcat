@@ -1,6 +1,7 @@
 pluginManagement {
     repositories {
         maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+        maven { name = 'NeoForged'; url = 'https://maven.neoforged.net/releases' }
         gradlePluginPortal()
         mavenCentral()
     }
@@ -13,3 +14,6 @@ include 'fabric'
 
 // Optional, and version-locked; see gui/build.gradle for why it is separate.
 include 'gui'
+
+// NeoForge build: main mod and GUI in one version-locked jar.
+include 'neoforge'
