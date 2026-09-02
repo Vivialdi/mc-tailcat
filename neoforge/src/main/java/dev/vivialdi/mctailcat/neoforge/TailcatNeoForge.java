@@ -8,6 +8,8 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.event.lifecycle.FMLDedicatedServerSetupEvent;
 import net.neoforged.fml.loading.FMLPaths;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The NeoForge adapter: the same runtimes the Fabric entrypoints start, hung
@@ -24,6 +26,32 @@ public final class TailcatNeoForge {
     private static TailcatClientRuntime client;
 
     public TailcatNeoForge(IEventBus modBus) {
+        // Core logs to stdout by default. Fabric folds stdout into the game log
+        // as [STDOUT] lines; NeoForge does not, so without this the banner with
+        // the operator's address never reaches logs/latest.log -- which is the
+        // file a hosting panel shows them. Route through the real logger.
+        Logger logger = LoggerFactory.getLogger("Tailcat");
+        Log.setSink(new Log.Sink() {
+            @Override
+            public void info(String message) {
+                logger.info(message);
+            }
+
+            @Override
+            public void warn(String message) {
+                logger.warn(message);
+            }
+
+            @Override
+            public void error(String message, Throwable error) {
+                if (error != null) {
+                    logger.error(message, error);
+                } else {
+                    logger.error(message);
+                }
+            }
+        });
+
         modBus.addListener(this::onServerSetup);
         modBus.addListener(this::onClientSetup);
     }
